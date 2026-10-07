@@ -169,14 +169,18 @@ def round_target(generator: TextGenerator, target_words: float, fuse: bool, inpu
     return min(level_target, input_words * 0.5)
 
 
+def chunk_limit(generator: TextGenerator) -> int:
+    """Maximum tokens of document text per chunk for this model."""
+    return min(get_settings().chunk_max_tokens, generator.content_token_limit)
+
+
 def make_chunks(generator: TextGenerator, sentences: list[str]) -> list[Chunk]:
-    settings = get_settings()
-    limit = min(settings.chunk_max_tokens, generator.content_token_limit)
+    """Default (framework-free) chunking: balanced chunks of whole sentences."""
 
     def count(text: str) -> int:
         return generator.count_tokens(text, special_tokens=False)
 
-    return chunk_sentences(sentences, limit, count, settings.chunk_overlap_sentences)
+    return chunk_sentences(sentences, chunk_limit(generator), count, get_settings().chunk_overlap_sentences)
 
 
 def next_step(generator: TextGenerator, combined: str, target_words: float, fuse: bool, level: int) -> str:

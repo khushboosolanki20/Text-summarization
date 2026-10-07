@@ -2,9 +2,9 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 8 of 15 complete (project skeleton; document loading and preprocessing;
+> **Project status:** Phase 9 of 15 complete (project skeleton; document loading and preprocessing;
 > TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking;
-> Hybrid TextRank → BART; LangGraph workflow). Sections below marked
+> Hybrid TextRank → BART; LangGraph workflow; LangChain document processing). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -121,8 +121,21 @@ search. Summary length follows the short/medium/long ratio. Input longer than BA
 **never truncated**. See [methodology §3](docs/methodology.md#3-abstractive-summarization).
 
 ## 11. LangChain
-*(Phase 9)*: used for `Document` objects, loader interfaces and text splitting only, never as the
-summarization algorithm.
+LangChain provides the **document-processing layer**, never the summarization algorithm:
+
+- **Loaders** ([`langchain_loaders.py`](backend/app/documents/langchain_loaders.py)): uploads and pasted text
+  become LangChain `Document` objects, **one per PDF page** with `source`/`page`/`file_type` metadata (reusing the
+  Phase 2 extraction and validation).
+- **Page provenance:** preprocessing maps every sentence to the page it starts on, so results can say *"selected
+  from page 4"* and long-document chunks report their page ranges. Sentences broken across a page boundary are
+  re-joined.
+- **Pluggable chunking:** the long-document chunker is a LangChain `TextSplitter`
+  ([`SentenceAwareTextSplitter`](backend/app/preprocessing/langchain_splitter.py)). LangChain's
+  `RecursiveCharacterTextSplitter` can be swapped in (`INTELLISUM_CHUNKING_STRATEGY=recursive`) to measure what
+  respecting sentence boundaries is worth.
+
+The summarizers never import LangChain; preprocessing accepts any object with `page_content` and `metadata`. See
+[architecture §7](docs/architecture.md#7-langchain-document-processing).
 
 ## 12. LangGraph
 Every request runs through one LangGraph **state graph** ([`summarization_graph.py`](backend/app/graph/summarization_graph.py)):

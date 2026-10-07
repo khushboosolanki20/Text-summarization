@@ -91,6 +91,10 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = 900
     # Sentences repeated from the end of one chunk at the start of the next.
     chunk_overlap_sentences: int = 0
+    # How the workflow cuts long documents into chunks (LangChain TextSplitter):
+    #   "sentence":  balanced chunks of whole sentences (default)
+    #   "recursive": LangChain's RecursiveCharacterTextSplitter (may cut sentences)
+    chunking_strategy: str = "sentence"
     # Maximum number of chunk -> summarize -> combine rounds before the result
     # is returned as is.
     max_reduction_levels: int = 3

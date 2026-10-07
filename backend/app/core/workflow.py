@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass, field
 from functools import lru_cache
 
+from app.documents.base import SourceDocument
 from app.graph.summarization_graph import build_summarization_graph
 from app.summarizers.base import SummaryLength, SummaryMethod
 from app.summarizers.long_document import ProgressCallback
@@ -26,6 +27,7 @@ class SummarizationOutput:
     processing_time: float
     metrics: dict
     sentences: list[str]  # the document's sentences (for highlighting in the UI)
+    sentence_pages: list[int | None]  # source page of each sentence (None for unpaged input)
     selected_indices: list[int] | None  # extractive: summary sentences; hybrid: sentences passed to BART
     sentence_scores: list[float] | None
     strategy: str
@@ -43,27 +45,33 @@ def get_graph():
 
 
 def run_summarization(
-    text: str,
+    text: str | None = None,
     method: SummaryMethod | str = SummaryMethod.HYBRID,
     length: SummaryLength | str = SummaryLength.MEDIUM,
     reference_summary: str | None = None,
     warnings: list[str] | None = None,
     on_progress: ProgressCallback | None = None,
     graph=None,
+    documents: list[SourceDocument] | None = None,
 ) -> SummarizationOutput:
     """
-    Summarize ``text``. Raises an ``IntelliSumError`` subclass for invalid
-    input or model problems (the API turns these into friendly messages).
-    ``warnings`` carries non-fatal issues from document loading, e.g.
-    skipped scanned pages, through to the response.
+    Summarize ``text``, or ``documents`` (e.g. LangChain Documents from
+    ``UploadedFileLoader``, one per PDF page, which enables page provenance).
+    Raises an ``IntelliSumError`` subclass for invalid input or model problems
+    (the API turns these into friendly messages). ``warnings`` carries
+    non-fatal issues from document loading, e.g. skipped scanned pages,
+    through to the response.
     """
+    if (text is None) == (documents is None):
+        raise ValueError("Pass exactly one of text or documents")
     method = SummaryMethod(method)  # ValueError for unknown values; the API validates first
     length = SummaryLength(length)
     graph = graph or get_graph()
 
     state = graph.invoke(
         {
-            "original_text": text,
+            "original_text": text if text is not None else "",
+            "documents": documents or [],
             "method": method.value,
             "summary_length": length.value,
             "reference_summary": reference_summary,
@@ -90,6 +98,7 @@ def run_summarization(
         processing_time=state["processing_time"],
         metrics=metrics,
         sentences=state["sentences"],
+        sentence_pages=state.get("sentence_pages", []),
         selected_indices=state.get("selected_sentences"),
         sentence_scores=state.get("sentence_scores"),
         strategy=state["strategy"],

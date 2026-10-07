@@ -31,6 +31,9 @@ in 1,024 tokens. A Phase 5 attempt on CPU was abandoned: the laptop was on batte
 (≈ 0.6 cores used), so 40 articles × 3 configurations did not finish in 3 hours. Run experiments on mains power,
 ideally on the GPU.
 
+**Planned: chunking strategy.** Long-document BART with the sentence-aware splitter vs LangChain's
+`RecursiveCharacterTextSplitter` (`INTELLISUM_CHUNKING_STRATEGY`), on documents longer than 1,024 tokens.
+
 **Tune on validation, report on test.** Hyper-parameters (e.g. the TextRank similarity threshold) are chosen on
 the validation split so the reported test numbers are not optimistically biased.
 

@@ -1,6 +1,30 @@
-"""Common result type returned by every document loader."""
+"""Common document types."""
 
 from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+
+class SourceDocument(Protocol):
+    """
+    A piece of input text plus metadata, e.g. one page of a PDF.
+
+    This is the boundary between document loading and the NLP pipeline.
+    ``langchain_core.documents.Document`` satisfies it (it has exactly these two
+    attributes), and so does ``TextDocument`` below. Preprocessing and the
+    workflow only rely on this protocol, so the LangChain loaders could be
+    replaced without touching the summarizers.
+    """
+
+    page_content: str
+    metadata: dict[str, Any]
+
+
+@dataclass
+class TextDocument:
+    """Minimal framework-free ``SourceDocument``."""
+
+    page_content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

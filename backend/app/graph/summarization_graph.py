@@ -57,7 +57,8 @@ from app.errors import IntelliSumError
 from app.evaluation.metrics import summary_statistics
 from app.graph.state import SummarizationState
 from app.preprocessing.cleaner import count_words
-from app.preprocessing.pipeline import preprocess
+from app.preprocessing.langchain_splitter import make_chunker
+from app.preprocessing.pipeline import preprocess, preprocess_documents
 from app.preprocessing.sentence_splitter import split_sentences
 from app.summarizers.bart import BARTSummarizer, check_abstractive_input_size
 from app.summarizers.base import SummaryMethod, length_ratio
@@ -65,8 +66,8 @@ from app.summarizers.generation import generate_summary, tidy_generated_text
 from app.summarizers.hybrid import HybridSummarizer
 from app.summarizers.long_document import (
     can_fuse,
+    chunk_limit,
     final_pass,
-    make_chunks,
     next_step,
     round_target,
     summarize_chunks,
@@ -108,6 +109,15 @@ def node(name: str):
     return decorator
 
 
+def _chunk_pages(chunks, work_pages) -> list[list[int]] | None:
+    """Source pages covered by each chunk (provenance), when pages are known."""
+    if not work_pages or any(p is None for p in work_pages):
+        return None
+    if any(not chunk.source_indices for chunk in chunks):
+        return None  # e.g. recursive chunks do not align with sentences
+    return [sorted({work_pages[i] for i in chunk.source_indices}) for chunk in chunks]
+
+
 def _unless_error(next_node: str):
     """Edge that continues to ``next_node`` unless a node recorded an error."""
     return lambda state: END if state.get("error") else next_node
@@ -130,12 +140,17 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
 
     @node("preprocess")
     def preprocess_node(state, config):
-        pre = preprocess(state["original_text"])
+        documents = state.get("documents")
+        pre = preprocess_documents(documents) if documents else preprocess(state["original_text"])
+        meta = {"num_sentences": pre.sentence_count}
+        if documents:
+            meta.update(source=documents[0].metadata.get("source"), num_documents=len(documents))
         return {
             "cleaned_text": pre.cleaned_text,
             "sentences": pre.sentences,
+            "sentence_pages": pre.sentence_pages,
             "original_word_count": pre.word_count,
-            "metadata": {"num_sentences": pre.sentence_count},
+            "metadata": meta,
         }
 
     @node("extractive_summarize")
@@ -160,10 +175,12 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
         selected, scores, textrank_meta = hybrid.select_sentences(sentences, budget, cap)
         if progress:
             progress("selecting key sentences (TextRank)", 1, 1)
+        pages = state.get("sentence_pages") or [None] * len(sentences)
         return {
             "selected_sentences": selected,
             "sentence_scores": [round(float(s), 6) for s in scores],
             "work_sentences": [sentences[i] for i in selected],
+            "work_pages": [pages[i] for i in selected],
             "target_words": target,
             "metadata": {
                 "num_selected": len(selected),
@@ -176,6 +193,7 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
     @node("check_length")
     def check_length_node(state, config):
         work = state.get("work_sentences") or state["sentences"]
+        work_pages = state.get("work_pages") if state.get("work_sentences") else state.get("sentence_pages")
         words = sum(count_words(s) for s in work)
         check_abstractive_input_size(words, state["method"])
         # BART sizes its summary from the original document; Hybrid already
@@ -184,6 +202,7 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
         tokens = model().count_tokens(" ".join(work))
         return {
             "work_sentences": work,
+            "work_pages": work_pages,
             "target_words": target,
             "input_tokens": tokens,
             "fuse": can_fuse(target),
@@ -216,9 +235,15 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
     def chunk_node(state, config):
         work = state["work_sentences"]
         words = sum(count_words(s) for s in work)
+
+        def count(text: str) -> int:
+            return model().count_tokens(text, special_tokens=False)
+
+        # Chunking strategy = a LangChain TextSplitter (sentence-aware by default).
+        chunker = make_chunker(count, chunk_limit(model()))
         return {
             "chunk_round": state["chunk_round"] + 1,
-            "chunks": make_chunks(model(), work),
+            "chunks": chunker(work),
             "round_target_words": round_target(model(), state["target_words"], state["fuse"], words),
         }
 
@@ -242,11 +267,13 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
             "num_chunks": len(chunks),
             "chunk_token_counts": [c.token_count for c in chunks],
             "contains_split_sentence": any(c.contains_split_sentence for c in chunks),
+            "chunk_pages": _chunk_pages(chunks, state.get("work_pages")),
             "summaries": summaries,
         }
         update = {"combined_text": combined, "next_step": step, "reduction_levels": [level]}
         if step == "another_round":
             update["work_sentences"] = split_sentences(combined, min_words=1)
+            update["work_pages"] = None  # summaries of summaries have no single source page
         elif step in ("done", "max_levels"):
             update["final_summary"] = combined
             update["strategy"] = "concatenated" if step == "done" else "max_levels_reached"

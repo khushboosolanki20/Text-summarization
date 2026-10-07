@@ -20,6 +20,7 @@ independently, so a heading can never be merged into the next sentence.
 """
 
 import logging
+import re
 from functools import lru_cache
 
 import spacy
@@ -76,21 +77,36 @@ def split_sentences(text: str, min_words: int | None = None) -> list[str]:
     (headings, figure labels, stray numbers) are dropped: they carry no
     summarizable content and would distort sentence scoring.
     """
+    return [sentence for sentence, _ in split_sentences_with_offsets(text, min_words)]
+
+
+_PARAGRAPH = re.compile(r"[^\n]+")
+
+
+def split_sentences_with_offsets(text: str, min_words: int | None = None) -> list[tuple[str, int]]:
+    """
+    Like ``split_sentences`` but also returns each sentence's start position
+    (character offset) in ``text``, used to map sentences back to the page
+    they came from.
+    """
     settings = get_settings()
     if min_words is None:
         min_words = settings.min_sentence_words
 
-    paragraphs = [p for p in text.split("\n\n") if p.strip()]
+    # Paragraphs are runs of text between newlines; remember where each starts.
+    paragraphs = [(m.group(), m.start()) for m in _PARAGRAPH.finditer(text) if m.group().strip()]
     if not paragraphs:
         return []
 
     nlp = get_nlp(settings.spacy_model, settings.sentence_segmenter)
-    sentences: list[str] = []
+    sentences: list[tuple[str, int]] = []
     # nlp.pipe batches the paragraphs, which is much faster than calling nlp()
     # on each one.
-    for doc in nlp.pipe(paragraphs, batch_size=64):
+    docs = nlp.pipe((p for p, _ in paragraphs), batch_size=64)
+    for doc, (_, paragraph_start) in zip(docs, paragraphs):
         for span in doc.sents:
             sentence = span.text.strip()
             if count_words(sentence) >= min_words and any(ch.isalpha() for ch in sentence):
-                sentences.append(sentence)
+                leading = len(span.text) - len(span.text.lstrip())
+                sentences.append((sentence, paragraph_start + span.start_char + leading))
     return sentences

@@ -32,7 +32,7 @@ How chunks are formed
 
 import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.preprocessing.cleaner import count_words
 
@@ -50,6 +50,9 @@ class Chunk:
     start_sentence: int  # position of the first sentence in the input list
     token_count: int
     contains_split_sentence: bool = False
+    # Input-list position of every sentence (or sentence piece) in this chunk;
+    # used to trace a chunk back to its source pages.
+    source_indices: list[int] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -159,6 +162,7 @@ def chunk_sentences(
                 start_sentence=units[group[0]][2],
                 token_count=tokens,
                 contains_split_sentence=any(units[u][3] for u in group),
+                source_indices=[units[u][2] for u in group],
             )
         )
     return chunks

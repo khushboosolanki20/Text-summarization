@@ -30,7 +30,8 @@ def add_timings(old: dict | None, new: dict | None) -> dict:
 
 class SummarizationState(TypedDict, total=False):
     # --- Request ---------------------------------------------------------------
-    original_text: str
+    original_text: str  # plain-text input, or ...
+    documents: list[Any]  # ... SourceDocuments, e.g. one LangChain Document per PDF page
     method: str  # "tfidf" | "textrank" | "bart" | "hybrid"
     summary_length: str  # "short" | "medium" | "long"
     reference_summary: str | None  # enables ROUGE (Phase 10)
@@ -39,6 +40,7 @@ class SummarizationState(TypedDict, total=False):
     # --- Preprocessing ---------------------------------------------------------
     cleaned_text: str
     sentences: list[str]
+    sentence_pages: list[int | None]  # source page of each sentence (None without pages)
     original_word_count: int
 
     # --- Extractive scoring / Hybrid selection -------------------------------
@@ -47,6 +49,7 @@ class SummarizationState(TypedDict, total=False):
 
     # --- Abstractive working state --------------------------------------------
     work_sentences: list[str]  # what the model must summarize (all sentences, or Hybrid's selection)
+    work_pages: list[int | None] | None  # source page of each work sentence (None after a reduction round)
     target_words: float  # requested summary length, relative to the original document
     input_tokens: int
     fuse: bool  # can one final pass write the whole summary?

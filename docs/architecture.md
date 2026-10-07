@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: sections 1–6 reflect the implementation as of Phase 8; API details are completed in Phase 11.
+> Status: sections 1–7 reflect the implementation as of Phase 9; API details are completed in Phase 11.
 
 ## 1. High-level overview
 
@@ -33,7 +33,7 @@ flowchart TD
 | Orchestration | `app/graph` | LangGraph state + routing |
 | Algorithms | `app/summarizers` | TF-IDF, TextRank, BART, Hybrid *(Phases 3-7)* |
 | Preprocessing | `app/preprocessing` | Cleaning, sentence splitting, chunking *(Phases 2, 6)* |
-| Documents | `app/documents` | TXT / PDF / DOCX loaders *(Phases 2, 9)* |
+| Documents | `app/documents` | TXT / PDF / DOCX extraction and validation; LangChain loaders → `Document` per page |
 | Evaluation | `app/evaluation` | ROUGE + statistics *(Phase 10)* |
 
 ## 3. Design principles
@@ -126,3 +126,48 @@ hierarchical map-reduce summarization, implemented as reusable steps that the gr
   (bugs) are not caught there and reach the API's generic handler, which logs the traceback and returns a generic
   message, so stack traces are never exposed. *(API mapping: Phase 11.)*
 - Model failures are isolated: if BART cannot load, TF-IDF and TextRank still work (tested).
+
+## 7. LangChain document processing
+
+```
+upload / pasted text
+   │  UploadedFileLoader / PastedTextLoader         (LangChain BaseLoader; Phase 2 extraction + validation inside)
+   ▼
+list[Document]   one per PDF page: page_content + {source, file_type, page, total_pages, title, author}
+   │  preprocess_documents()                        (clean each page → join pages → spaCy sentences)
+   ▼
+sentences + sentence_pages                          (page each sentence starts on)
+   │  LangGraph workflow                            (§4)
+   ▼  chunk_document node → make_chunker()          (a LangChain TextSplitter, chosen by config)
+chunks + chunk_pages                                (pages each chunk covers)
+```
+
+### 7.1 What LangChain contributes
+
+| Component | LangChain abstraction | Why it helps |
+|---|---|---|
+| `UploadedFileLoader`, `PastedTextLoader` | `BaseLoader` → `Document` | One input shape for every source; per-page `Document`s carry the metadata that makes provenance possible; standard `load()` / `lazy_load()` / `load_and_split()`. |
+| `SentenceAwareTextSplitter` | `TextSplitter` | Our balanced whole-sentence chunker behind the standard interface: `split_text`, and `split_documents`, which copies page metadata onto chunks and adds `chunk_index` and `token_count`. |
+| `RecursiveCharacterTextSplitter` | `TextSplitter` (LangChain's own) | A drop-in alternative chunking strategy (`INTELLISUM_CHUNKING_STRATEGY=recursive`) for the experiment "does respecting sentence boundaries improve chunk summaries?". It falls back to word boundaries and can cut sentences in half (flagged `contains_split_sentence`; demonstrated in tests). |
+
+Both splitters measure size with the **model's tokenizer**, so "900" means 900 BART tokens, not characters.
+
+### 7.2 Page provenance
+
+Each PDF page is cleaned separately and the pages are joined. If a page does not end a sentence and the next
+starts in lowercase, they are joined with a space (or, for a word hyphenated across the break, with nothing),
+so a sentence that runs over a page break is no longer cut into two fragments (a Phase 2 limitation, fixed
+here). spaCy reports each sentence's character offset; a binary search over the page start offsets gives the
+page it starts on. Hybrid's selection keeps these page numbers, and every reduction round reports
+`chunk_pages`, e.g. `[[1, 2, 3], [3, 4, 5], …]`. After the first round, chunks contain summaries rather than
+source text, so pages are no longer attributed.
+
+### 7.3 Replaceability
+
+LangChain is confined to two adapter modules: `app/documents/langchain_loaders.py` and
+`app/preprocessing/langchain_splitter.py`. Everything else depends on our own `SourceDocument` protocol (any
+object with `page_content` and `metadata`; `langchain_core.documents.Document` satisfies it, as does the
+framework-free `TextDocument`), on `chunk_sentences()`, and on a plain `Chunker` callable. The summarizers never
+import LangChain, and `BARTSummarizer` used directly still chunks with the framework-free `chunk_sentences()`. A
+unit test confirms the LangChain splitter and the core chunker produce identical chunks, and that preprocessing
+gives identical results for LangChain and framework-free documents.
