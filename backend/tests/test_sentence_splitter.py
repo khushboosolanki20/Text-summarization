@@ -37,6 +37,25 @@ def test_short_fragments_are_dropped():
     assert split_sentences(text) == ["The proposed method clearly outperforms the baseline."]
 
 
+def test_opening_quote_stays_with_its_sentence():
+    # spaCy attaches the opening quote of the quoted sentence to the previous one.
+    text = (
+        "The bill was issued to the businessman Garry John Donoghue. 'Garry, if you don't pay me, "
+        "I will give the office everything I have on you,' his adviser said."
+    )
+    sentences = split_sentences(text)
+    assert sentences[0] == "The bill was issued to the businessman Garry John Donoghue."
+    assert sentences[1].startswith("'Garry, if you")
+
+
+def test_offsets_point_at_sentence_starts():
+    from app.preprocessing.sentence_splitter import split_sentences_with_offsets
+
+    text = "First sentence is right here. 'Quoted second sentence,' he said loudly.\n\nNew paragraph starts here now."
+    for sentence, start in split_sentences_with_offsets(text):
+        assert text[start : start + len(sentence)] == sentence
+
+
 def test_min_words_is_configurable():
     assert split_sentences("Yes! It works well here.", min_words=1) == ["Yes!", "It works well here."]
 

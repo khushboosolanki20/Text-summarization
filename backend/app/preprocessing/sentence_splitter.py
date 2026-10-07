@@ -81,6 +81,23 @@ def split_sentences(text: str, min_words: int | None = None) -> list[str]:
 
 
 _PARAGRAPH = re.compile(r"[^\n]+")
+# spaCy sometimes attaches the opening quote of the next sentence to the end of
+# the previous one: ["...Donoghue. '", "Garry, if you..."]. Detect a lone
+# opening quote at the end of a sentence (after whitespace).
+_DANGLING_OPEN_QUOTE = re.compile(r"\s+(['\"‘“])$")
+
+
+def _fix_dangling_quotes(spans: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    """Move a dangling opening quote from the end of one sentence to the start of the next."""
+    fixed = [list(span) for span in spans]
+    for i in range(len(fixed) - 1):
+        match = _DANGLING_OPEN_QUOTE.search(fixed[i][0])
+        if match:
+            quote = match.group(1)
+            fixed[i][0] = fixed[i][0][: match.start()]
+            fixed[i + 1][0] = quote + fixed[i + 1][0]
+            fixed[i + 1][1] -= len(quote)  # the next sentence now starts at the quote
+    return [(text, start) for text, start in fixed]
 
 
 def split_sentences_with_offsets(text: str, min_words: int | None = None) -> list[tuple[str, int]]:
@@ -104,9 +121,11 @@ def split_sentences_with_offsets(text: str, min_words: int | None = None) -> lis
     # on each one.
     docs = nlp.pipe((p for p, _ in paragraphs), batch_size=64)
     for doc, (_, paragraph_start) in zip(docs, paragraphs):
+        spans = []
         for span in doc.sents:
-            sentence = span.text.strip()
+            leading = len(span.text) - len(span.text.lstrip())
+            spans.append((span.text.strip(), paragraph_start + span.start_char + leading))
+        for sentence, start in _fix_dangling_quotes(spans):
             if count_words(sentence) >= min_words and any(ch.isalpha() for ch in sentence):
-                leading = len(span.text) - len(span.text.lstrip())
-                sentences.append((sentence, paragraph_start + span.start_char + leading))
+                sentences.append((sentence, start))
     return sentences

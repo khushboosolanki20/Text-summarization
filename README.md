@@ -2,10 +2,10 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 11 of 15 complete. The backend is feature-complete: document loading and
+> **Project status:** Phase 12 of 15 complete. The application is feature-complete: document loading and
 > preprocessing; TF-IDF, TextRank, BART and Hybrid summarization; long-document chunking; LangGraph workflow;
-> LangChain document processing; ROUGE evaluation and an experimental faithfulness check; REST API.
-> Next: React UI, experiments and final documentation. Sections below marked
+> LangChain document processing; ROUGE evaluation and an experimental faithfulness check; REST API; React
+> dashboard. Next: final tests, experiments and documentation. Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -77,7 +77,7 @@ See [docs/architecture.md](docs/architecture.md) for details.
 ## 5. Technologies
 | Area | Tools |
 |---|---|
-| Frontend | React, Vite, Tailwind CSS, Axios |
+| Frontend | React, Vite, Tailwind CSS, Axios, React Router, Recharts |
 | Backend | Python 3.11+, FastAPI, Uvicorn, Pydantic |
 | Classical NLP | spaCy, NLTK, scikit-learn, NetworkX |
 | Deep learning | PyTorch, Hugging Face Transformers |
@@ -218,7 +218,19 @@ API docs: <http://127.0.0.1:8000/docs>
 cd frontend
 npm run dev
 ```
-Open <http://localhost:5173>.
+Open <http://localhost:5173> (the backend must be running).
+
+The dashboard lets you paste text or drag-and-drop a PDF/DOCX/TXT, choose **TF-IDF · TextRank · BART · Hybrid**
+and **short · medium · long**, and optionally add a reference summary. Long documents show live progress
+("summarizing chunks 3/7"). Results show:
+- an original-vs-summary comparison with the compression ratio;
+- the summary, with copy and download;
+- ROUGE chart and table (or a box to add a reference afterwards);
+- for extractive methods, the selected sentences highlighted in the document with their scores and page numbers;
+- the experimental faithfulness warnings;
+- the LangGraph route with time per step.
+
+A local history keeps the last 25 summaries in the browser. See [frontend/README.md](frontend/README.md).
 
 ## 19. API endpoints
 | Method | Path | Purpose |

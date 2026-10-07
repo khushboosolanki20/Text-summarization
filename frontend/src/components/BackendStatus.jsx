@@ -32,13 +32,23 @@ export default function BackendStatus() {
     status === 'checking'
       ? 'Connecting to backend…'
       : status === 'online'
-        ? `Backend online · v${info.version}`
+        ? `Backend online · ${info.device.toUpperCase()}`
         : 'Backend offline'
+  const details =
+    status === 'online'
+      ? [
+          `IntelliSum v${info.version}`,
+          `Model: ${info.abstractive_model} (${info.abstractive_model_loaded ? 'loaded' : 'loads on first use'})`,
+          info.gpu_problem ? `GPU unavailable: ${info.gpu_problem}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : error
 
   return (
     <div
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ring-1 ${STYLES[status]}`}
-      title={error ?? undefined}
+      title={details ?? undefined}
     >
       <span className={`h-2 w-2 rounded-full ${DOT[status]}`} />
       {label}
