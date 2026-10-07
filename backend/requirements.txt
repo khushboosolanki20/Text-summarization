@@ -1,0 +1,40 @@
+# IntelliSum backend runtime dependencies (Python 3.11+; developed on 3.14).
+#
+# PyTorch is listed here for completeness, but on Windows/Linux with an NVIDIA
+# GPU you should install the CUDA build FIRST (see backend/README.md), otherwise
+# pip installs the CPU-only wheel from PyPI. The app works on CPU either way.
+
+# --- Web API ---------------------------------------------------------------
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+python-multipart>=0.0.9      # required by FastAPI for multipart file uploads
+
+# --- Classical NLP ---------------------------------------------------------
+spacy>=3.8                   # sentence segmentation (+ en_core_web_sm model, installed separately)
+nltk>=3.9                    # stopwords / tokenisation helpers
+scikit-learn>=1.5            # TF-IDF vectorisation, cosine similarity
+networkx>=3.3                # TextRank sentence graph + PageRank
+numpy>=1.26
+
+# --- Deep learning (abstractive summarisation) -----------------------------
+torch>=2.4
+transformers>=4.44           # facebook/bart-large-cnn (T5 / PEGASUS-ready)
+
+# --- Document processing ---------------------------------------------------
+pymupdf>=1.24                # PDF text extraction (import name: fitz / pymupdf)
+python-docx>=1.1             # DOCX paragraph extraction
+
+# --- Orchestration ---------------------------------------------------------
+# langchain-core gives us the Document / BaseLoader abstractions and
+# langchain-text-splitters the sentence-aware chunking utilities. We
+# deliberately do NOT pull in langchain-community: its PDF/DOCX loaders are thin
+# wrappers over the same libraries above and would not let us detect scanned
+# PDFs or corrupted files with meaningful errors.
+langchain-core>=0.3
+langchain-text-splitters>=0.3
+langgraph>=0.2               # summarisation workflow (state graph + conditional routing)
+
+# --- Evaluation ------------------------------------------------------------
+rouge-score>=0.1.2           # Google's reference ROUGE-1/2/L implementation

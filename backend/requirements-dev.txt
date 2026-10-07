@@ -1,0 +1,4 @@
+# Development / testing tools (installed on top of requirements.txt)
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27                  # used by FastAPI's TestClient
