@@ -2,8 +2,8 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 2 of 15 complete (project skeleton; document loading and preprocessing, see
-> [docs/methodology.md §1](docs/methodology.md#1-preprocessing)). Sections below marked
+> **Project status:** Phase 3 of 15 complete (project skeleton; document loading and preprocessing;
+> TF-IDF extractive summarization). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -84,10 +84,18 @@ See [docs/architecture.md](docs/architecture.md) for details.
 | Evaluation | rouge-score, Hugging Face Datasets (experiments only) |
 
 ## 6. Extractive summarization
-*(Phase 3–4)*: selects the most informative sentences of the source verbatim.
+Extractive methods select the most important sentences of the source **verbatim** and keep them in their
+original order. Each sentence gets an importance score; the top `k` (12 / 22 / 32 % of sentences for
+short / medium / long) are chosen, skipping near-duplicates. Because nothing is generated, an extractive summary
+cannot invent facts, and every selection is explainable by its score.
+See [methodology §2](docs/methodology.md#2-extractive-summarization).
 
 ## 7. TF-IDF
-*(Phase 3)*
+Each sentence becomes a vector of TF-IDF weights (stop words removed, words stemmed with NLTK's Porter stemmer).
+Averaging these vectors gives the **document centroid**, which describes the document's main topics. Sentences
+are ranked by **cosine similarity to the centroid**. This beat the textbook "average term weight" scoring by
+~9–16 ROUGE-1 points in our check, because that scoring rewards rare, off-topic words.
+Implementation: [`TFIDFSummarizer`](backend/app/summarizers/tfidf.py).
 
 ## 8. TextRank
 *(Phase 4)*

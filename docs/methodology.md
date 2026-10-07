@@ -70,9 +70,76 @@ Input is rejected with a human-readable message if it is empty, longer than 500,
 - English only (the spaCy model and later the BART model are English).
 
 ## 2. Extractive summarization
-Why selecting existing sentences works, and its limitations.
 
-### 2.1 TF-IDF sentence scoring *(Phase 3)*
+An extractive summary is a **subset of the original sentences**, kept in their original order. It works because
+well-written documents state their main points explicitly, in sentences that share vocabulary with the rest of
+the text. If we can measure how *central* a sentence is, the top sentences form a summary.
+
+Strengths: every sentence is copied from the source, so the summary cannot state facts the source doesn't
+(no hallucination); it is fast, needs no training data or GPU, and every choice can be explained by a score.
+Weaknesses: sentences can lose context when taken out of their neighbourhood (dangling "he", "this"), the
+summary can feel choppy, and it cannot merge or shorten sentences.
+
+### 2.0 Shared selection procedure (`app/summarizers/base.py`)
+
+TF-IDF and TextRank differ **only** in how they score sentences. Everything else is shared:
+
+1. **Target size:** `k = ceil(n × ratio)`, clamped to `1 … n−1`, where `ratio` is 0.12 / 0.22 / 0.32 for
+   short / medium / long (configurable via `INTELLISUM_LENGTH_RATIOS`).
+2. **Rank** sentences by score (ties → earlier sentence first).
+3. **Redundancy control:** walking down the ranking, skip a sentence whose cosine similarity to an
+   already-selected sentence exceeds 0.8. Documents often restate a key point, and both versions would score
+   highly. If too many are skipped, they back-fill so the summary still has `k` sentences.
+4. **Restore document order** so the summary reads naturally.
+
+The result exposes every sentence's score and the selected indices, so the UI can show *why* a sentence was chosen.
+
+### 2.1 TF-IDF sentence scoring (`app/summarizers/tfidf.py`)
+
+**Term weighting.** Each sentence is treated as a tiny document. After tokenizing, removing stop words and
+stemming (NLTK Porter stemmer, `app/preprocessing/tokenizer.py`), scikit-learn's `TfidfVectorizer` builds an
+`n_sentences × n_terms` matrix:
+
+```
+tf(t, s)  = 1 + log(count of t in s)               (sublinear: repetition has diminishing returns)
+idf(t)    = ln((1 + n) / (1 + df(t))) + 1          (df = number of sentences containing t)
+w(t, s)   = tf(t, s) · idf(t),   each row then L2-normalised
+```
+
+A term weighs heavily in a sentence when it appears there but not everywhere, i.e. it is *specific*.
+
+**Sentence importance: centroid method (default).** Average all sentence vectors to obtain the **document
+centroid** `c`, a single vector describing what the document is about. Terms that recur across many sentences
+dominate it. Each sentence is scored by its cosine similarity to the centroid:
+
+```
+score(s) = cos(v_s, c) = (v_s · c) / (‖v_s‖ ‖c‖)
+```
+
+so sentences that talk about the document's main topics rank highest (Radev et al., 2004). The highest-weighted
+centroid terms are returned as `top_keywords`, mapped from stems back to readable words.
+
+**Alternative: mean term weight (`scoring="mean"`).** Score a sentence by the average un-normalised TF-IDF
+weight of its terms. This is the "textbook" approach, but it has a serious flaw: words that occur **only once**
+in the document have the maximum IDF, so off-topic sentences built from unusual words score highest. In our unit
+test, "The weather was pleasant in Paris when the report was released" was selected by `mean` and correctly
+rejected by `centroid`.
+
+**Design check on CNN/DailyMail (200 test articles, `short` length):**
+
+| Method | Slice | ROUGE-1 | ROUGE-2 | ROUGE-L |
+|---|---|---|---|---|
+| Lead-3 baseline | first 200 (CNN) | 30.27 | 12.21 | 20.98 |
+| TF-IDF centroid | first 200 (CNN) | 26.57 | 9.26 | 18.31 |
+| TF-IDF mean | first 200 (CNN) | 17.10 | 2.98 | 11.45 |
+| Lead-3 baseline | items 3000–3199 (Daily Mail) | 39.62 | 17.74 | – |
+| TF-IDF centroid | items 3000–3199 (Daily Mail) | 35.24 | 14.74 | – |
+| TF-IDF mean | items 3000–3199 (Daily Mail) | 19.52 | 3.35 | – |
+
+Centroid scoring is ~9–16 ROUGE-1 points better than mean scoring, so it is the default. Both trail
+**Lead-3** (the first three sentences), a known property of news: journalists put the key facts first
+(the "inverted pyramid"), which a position-agnostic method like TF-IDF does not exploit. These are preliminary
+numbers used for a design decision; the full comparison is in [experiments.md](experiments.md) (Phase 14).
 
 ### 2.2 TextRank *(Phase 4)*
 Similarity graph construction, PageRank, and sentence ranking.

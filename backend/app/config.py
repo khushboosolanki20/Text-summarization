@@ -42,6 +42,17 @@ class Settings(BaseSettings):
     # treated as candidate sentences for summarization.
     min_sentence_words: int = 3
 
+    # --- Summary length ----------------------------------------------------
+    # Target summary size as a fraction of the input. For extractive methods
+    # this is the fraction of sentences selected. Override with JSON, e.g.
+    # INTELLISUM_LENGTH_RATIOS='{"short": 0.1, "medium": 0.2, "long": 0.3}'
+    length_ratios: dict[str, float] = {"short": 0.12, "medium": 0.22, "long": 0.32}
+
+    # --- Extractive summarization -----------------------------------------
+    # A candidate sentence is skipped if its cosine similarity to an already
+    # selected sentence exceeds this value (avoids near-duplicate sentences).
+    redundancy_threshold: float = 0.8
+
     # --- Abstractive model -------------------------------------------------
     abstractive_model_name: str = "facebook/bart-large-cnn"
     # "auto" picks CUDA when available, otherwise CPU. Can force "cpu"/"cuda".
