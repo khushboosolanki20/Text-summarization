@@ -32,6 +32,7 @@ class SummarizationOutput:
     sentence_scores: list[float] | None
     strategy: str
     metadata: dict
+    faithfulness: dict = field(default_factory=dict)
     intermediate_summaries: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     path: list[str] = field(default_factory=list)  # graph nodes visited
@@ -103,6 +104,7 @@ def run_summarization(
         sentence_scores=state.get("sentence_scores"),
         strategy=state["strategy"],
         metadata=metadata,
+        faithfulness=state.get("faithfulness", {}),
         intermediate_summaries=levels[0]["summaries"] if levels else [],
         warnings=state.get("warnings", []),
         path=state.get("path", []),

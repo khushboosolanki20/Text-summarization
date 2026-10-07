@@ -2,9 +2,10 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 9 of 15 complete (project skeleton; document loading and preprocessing;
+> **Project status:** Phase 10 of 15 complete (project skeleton; document loading and preprocessing;
 > TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking;
-> Hybrid TextRank → BART; LangGraph workflow; LangChain document processing). Sections below marked
+> Hybrid TextRank → BART; LangGraph workflow; LangChain document processing; ROUGE evaluation and
+> experimental faithfulness check). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -165,8 +166,17 @@ Implementation: [`chunker.py`](backend/app/preprocessing/chunker.py),
 [methodology §4](docs/methodology.md#4-long-documents-and-chunking).
 
 ## 15. Evaluation
-*(Phase 10)*: ROUGE-1, ROUGE-2 and ROUGE-L, computed **only** when a reference summary exists, plus word
-counts, compression ratio and processing time.
+- **ROUGE-1, ROUGE-2, ROUGE-L** (and ROUGE-Lsum), with precision, recall and F1, via Google's `rouge-score`.
+  A from-scratch implementation of the formulas is included and verified against it in tests. ROUGE is computed
+  **only when a reference summary is supplied**; otherwise the fields are `null` with an explanation. Scores are
+  never estimated.
+- **Statistics** for every summary: original/summary word counts, compression ratio, sentence counts, sentences
+  selected, processing time.
+- **Experimental faithfulness check** for BART/Hybrid: flags *"potentially unsupported content"*, i.e. summary
+  sentences whose words, numbers or names are not found in the source, with the closest source passage for
+  verification. It is a heuristic review aid, not a hallucination detector.
+
+See [methodology §7–8](docs/methodology.md#7-faithfulness-check-experimental-appevaluationfaithfulnesspy).
 
 ## 16. Installation
 

@@ -53,8 +53,10 @@ from functools import wraps
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 
+from app.config import get_settings
 from app.errors import IntelliSumError
-from app.evaluation.metrics import summary_statistics
+from app.evaluation.faithfulness import check_faithfulness, not_applicable
+from app.evaluation.metrics import evaluate_summary
 from app.graph.state import SummarizationState
 from app.preprocessing.cleaner import count_words
 from app.preprocessing.langchain_splitter import make_chunker
@@ -303,16 +305,27 @@ def build_summarization_graph(abstractive: BARTSummarizer | None = None):
 
     @node("evaluate")
     def evaluate_node(state, config):
-        elapsed = time.perf_counter() - state["started_at"]
+        summary = state["final_summary"]
         selected = state.get("selected_sentences")
-        metrics = summary_statistics(
+
+        # Experimental faithfulness check: only meaningful for generated text.
+        if not get_settings().faithfulness_check:
+            faithfulness = not_applicable("The faithfulness check is disabled in the server configuration.")
+        elif state["strategy"] == "extractive":
+            faithfulness = not_applicable("Extractive summaries copy source sentences verbatim.")
+        else:
+            faithfulness = check_faithfulness(summary, state["sentences"])
+
+        elapsed = time.perf_counter() - state["started_at"]  # includes the checks above
+        metrics = evaluate_summary(
+            summary,
             state["original_word_count"],
-            state["final_summary"],
             len(state["sentences"]),
             len(selected) if selected is not None else None,
             elapsed,
+            state.get("reference_summary"),
         )
-        return {"metrics": metrics, "processing_time": round(elapsed, 3)}
+        return {"metrics": metrics, "faithfulness": faithfulness, "processing_time": metrics["processing_time"]}
 
     # ---------------------------------------------------------------- routers
 

@@ -67,7 +67,8 @@ class SummarizationState(TypedDict, total=False):
     final_summary: str
     strategy: str  # "extractive" | "single_pass" | "fused" | "concatenated" | "max_levels_reached"
     metadata: Annotated[dict, merge_dicts]
-    metrics: dict
+    metrics: dict  # statistics + ROUGE (None without a reference summary)
+    faithfulness: dict  # experimental "potentially unsupported content" check
     processing_time: float
 
     # --- Diagnostics --------------------------------------------------------------

@@ -427,8 +427,102 @@ The ratios sit inside the ranges in the project brief (10–15 %, 20–25 %, 30�
   documents the summary is section-by-section (§4.3). The reported word counts are always measured, never
   assumed.
 
-## 7. Faithfulness check (experimental) *(later phase)*
-What hallucination means and why this check is only a heuristic.
+## 7. Faithfulness check (experimental) (`app/evaluation/faithfulness.py`)
 
-## 8. Evaluation with ROUGE *(Phase 10)*
-ROUGE-1, ROUGE-2, ROUGE-L and their limitations.
+### 7.1 What hallucination means
+
+An abstractive model generates text token by token from learned probabilities. It can therefore produce
+fluent statements the source never made: a wrong number, a name that does not occur, an invented cause. This
+is called **hallucination** (or unfaithfulness). Extractive summaries cannot hallucinate (they copy sentences),
+although they can still mislead by omission or lost context.
+
+### 7.2 The heuristic
+
+For each sentence of a BART or Hybrid summary (labelled **"Potentially unsupported content (experimental)"**):
+
+| Signal | How | Catches |
+|---|---|---|
+| Content-word coverage | share of the sentence's stemmed, non-stop words found anywhere in the source | new content |
+| Unsupported numbers | numbers in the sentence that never occur in the source | wrong figures, years, amounts |
+| Unsupported names | spaCy NER entities (people, organisations, places, …) not found in the source | invented names |
+| Closest source passage | best TF-IDF cosine match among source sentences *and adjacent pairs* (abstractive sentences often fuse two) | shown so the reader can verify |
+
+A sentence is flagged if coverage < 60 % or it contains an unsupported number or name. The response lists the
+reasons in plain language, e.g. *"number(s) not found in the source: 15"*.
+
+**Worked example** (unit-tested). Source: the solar-energy article ("installations rose by nearly 50 percent").
+
+| Summary sentence | Coverage | Similarity | Flagged because |
+|---|---|---|---|
+| Solar power capacity grew faster than any other energy source last year. | 100 % | 0.87 | (not flagged) |
+| Solar installations rose by nearly **15** percent globally. | 100 % | 0.89 | number not in source: 15 |
+| The **World Bank** said **Germany** led the growth. | 33 % | 0.47 | low coverage; names not in source |
+| The football team won the championship… | 0 % | 0.00 | low coverage |
+
+The second row is the important one: word overlap and similarity are almost perfect, so a purely
+similarity-based check would miss the wrong number.
+
+**On real BART output** (5 random CNN/DailyMail validation articles, `short`): 0 of 16 summary sentences were
+flagged, and every sentence had 100 % content-word coverage. `bart-large-cnn` is known to be largely
+*extractive in style*: it mostly copies and compresses source phrases. That means no false alarms on these
+articles, but the sample is far too small to say anything about how many real errors it would catch.
+
+### 7.3 Limitations, stated honestly
+
+- **Lexical, not semantic.** A faithful paraphrase with different words can be flagged (false positive); a
+  sentence recombining source words into a false claim ("China accounted for half of *wind* capacity") is not
+  flagged (false negative).
+- Entity matching is by substring, and numbers written as words ("fifty") are not compared with digits.
+- Better approaches (future work): sentence embeddings for semantic similarity, or a natural-language-inference
+  model that checks whether the source *entails* each summary sentence. Both need another model download and were
+  left out deliberately.
+- It is a **review aid, not a guarantee**: the API and UI say so, and it can be disabled with
+  `INTELLISUM_FAITHFULNESS_CHECK=false`.
+
+## 8. Evaluation with ROUGE (`app/evaluation/rouge.py`, `app/evaluation/metrics.py`)
+
+### 8.1 How ROUGE works
+
+ROUGE (Lin, 2004) compares a candidate summary with a human-written **reference** by counting shared units, after
+lowercasing, removing punctuation and Porter-stemming:
+
+| Metric | Unit | Measures |
+|---|---|---|
+| ROUGE-1 | single words | content coverage |
+| ROUGE-2 | word pairs (bigrams) | phrasing / local fluency |
+| ROUGE-L | longest common subsequence (in order, gaps allowed) | sentence-level word order |
+| ROUGE-Lsum | LCS per sentence, combined over the summary | the variant most CNN/DailyMail papers report |
+
+```
+precision = overlap / units in candidate        recall = overlap / units in reference
+F1        = 2 · P · R / (P + R)
+```
+
+Overlap is **clipped**: a word counts at most as many times as it appears in the other text. (A unit test shows it:
+"the model summarizes documents" vs "the models summarized *the* document" gives recall 4/5, because the reference
+has "the" twice.) The LCS is computed by dynamic programming: `table[i][j]` = LCS of the first *i* candidate and
+first *j* reference words.
+
+Scores come from Google's `rouge-score` package (the reference implementation). `rouge_n_reference()`,
+`lcs_length()` and `rouge_l_reference()` re-implement the formulas in ~30 readable lines, and tests confirm they
+give identical precision, recall and F1.
+
+### 8.2 When ROUGE is (not) computed
+
+ROUGE needs a reference summary. For a user's own document there usually is none, so the API returns
+`rouge1 = rouge2 = rougeL = null` with `rouge_note` explaining why, and **never** an estimated score. When the
+user supplies a reference (or in experiments, where CNN/DailyMail provides one), all variants are returned with
+precision, recall and F1.
+
+Other statistics, always available: original and summary word counts, compression ratio, number of sentences,
+number of sentences selected (extractive/hybrid), and processing time.
+
+### 8.3 Limitations of ROUGE
+
+- **Surface overlap, not meaning:** "the firm's profits fell" vs "the company lost money" scores near zero; a
+  summary that copies reference words but states something false can score high.
+- **Favours extractive output:** copying source sentences reuses the reference's vocabulary, which partly explains
+  strong extractive baselines such as Lead-3.
+- **One reference** captures one person's notion of what matters; other valid summaries are penalised.
+- **Length-sensitive:** longer candidates gain recall and lose precision, so F1 is compared at similar lengths.
+- It says nothing about fluency, coherence or factual correctness (hence the faithfulness check in §7).

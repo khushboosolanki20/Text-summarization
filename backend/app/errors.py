@@ -51,6 +51,11 @@ class PasswordProtectedError(IntelliSumError):
     default_message = "The PDF is password-protected. Please upload an unlocked copy."
 
 
+class InvalidReferenceError(IntelliSumError):
+    status_code = 422
+    default_message = "The reference summary is empty. Provide a reference summary to compute ROUGE."
+
+
 class ContextWindowExceededError(IntelliSumError):
     status_code = 413
     default_message = "The text is longer than the summarization model can read in one pass."

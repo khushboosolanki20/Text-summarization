@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     # shrinks the document extractively) instead of running for many minutes.
     abstractive_max_input_words: int = 20_000
 
+    # --- Experimental faithfulness check -------------------------------------
+    # Flags abstractive summary sentences that may not be supported by the
+    # source (a heuristic, not a hallucination detector). Can be disabled.
+    faithfulness_check: bool = True
+    # A summary sentence is flagged if less than this share of its content
+    # words occur anywhere in the source.
+    faithfulness_min_coverage: float = 0.6
+
     # --- Hybrid (TextRank -> BART) -------------------------------------------
     # TextRank selects about this many times the requested summary length,
     # giving BART more material than it needs so it can still choose and
