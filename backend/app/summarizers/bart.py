@@ -78,6 +78,21 @@ class AbstractiveSummarizer(BaseSummarizer):
         length: SummaryLength | str = SummaryLength.MEDIUM,
         on_progress: ProgressCallback | None = None,
     ) -> SummaryResult:
+        input_words = sum(count_words(s) for s in sentences)
+        return self.summarize_to_target(sentences, input_words * length_ratio(length), on_progress)
+
+    def summarize_to_target(
+        self,
+        sentences: list[str],
+        target_words: float,
+        on_progress: ProgressCallback | None = None,
+    ) -> SummaryResult:
+        """
+        Summarize ``sentences`` to about ``target_words`` words: one pass if
+        the text fits the context window, hierarchical chunking otherwise.
+        Hybrid calls this directly so the target can be relative to the
+        original document rather than to the (already reduced) input.
+        """
         settings = get_settings()
         text = " ".join(sentences)
         input_words = count_words(text)
@@ -99,13 +114,12 @@ class AbstractiveSummarizer(BaseSummarizer):
             "input_tokens": input_tokens,
             "max_input_tokens": self.model.max_input_tokens,
             "num_beams": settings.num_beams,
+            "target_words": round(target_words),
         }
 
         if input_tokens <= self.model.max_input_tokens:
             # Short document: one pass over the whole text.
-            summary, trimmed, (min_tokens, max_tokens) = generate_summary(
-                self.model, text, input_words * length_ratio(length)
-            )
+            summary, trimmed, (min_tokens, max_tokens) = generate_summary(self.model, text, target_words)
             metadata.update(
                 strategy="single_pass",
                 chunks=1,
@@ -115,12 +129,11 @@ class AbstractiveSummarizer(BaseSummarizer):
             )
         else:
             # Long document: chunk -> summarize chunks -> combine -> final pass.
-            result = hierarchical_summarize(self.model, sentences, length, on_progress)
+            result = hierarchical_summarize(self.model, sentences, target_words, on_progress)
             summary = result.summary
             metadata.update(
                 strategy=result.strategy,
                 chunks=len(result.levels[0].chunks),
-                target_words=round(result.target_words),
                 reduction_levels=[level.describe() for level in result.levels],
                 intermediate_summaries=result.intermediate_summaries,
                 trimmed_incomplete_sentence=result.final_pass_trimmed,

@@ -2,9 +2,9 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 6 of 15 complete (project skeleton; document loading and preprocessing;
-> TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking).
-> Sections below marked
+> **Project status:** Phase 7 of 15 complete (project skeleton; document loading and preprocessing;
+> TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking;
+> Hybrid TextRank → BART). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -128,7 +128,12 @@ summarization algorithm.
 *(Phase 8)*: a typed state graph with conditional routing between short- and long-document paths.
 
 ## 13. Hybrid summarization
-*(Phase 7)*: TextRank selects key sentences, then BART rewrites them abstractively.
+[`HybridSummarizer`](backend/app/summarizers/hybrid.py) uses **TextRank as a content selector and BART as a
+rewriter**. TextRank reads the whole document and picks its most central sentences (about 3× the requested
+summary length, skipping near-duplicates). When the summary fits one BART pass, the selection is capped to one
+BART window, so BART needs no chunking. BART then rewrites the selection, with the summary length still based on
+the **original** document. The result shows which sentences BART received and how much input it was spared.
+See [methodology §5](docs/methodology.md#5-hybrid-textrank--bart-appsummarizershybridpy).
 
 ## 14. Long-document strategy
 BART reads at most 1,024 tokens (~750 words), and IntelliSum **never truncates**. Longer documents are split into

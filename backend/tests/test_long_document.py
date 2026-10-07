@@ -10,7 +10,14 @@ slow tests in test_bart.py.
 
 import math
 
-from app.summarizers.long_document import hierarchical_summarize
+from app.summarizers.base import length_ratio
+from app.summarizers.long_document import hierarchical_summarize as _hierarchical
+
+
+def hierarchical_summarize(generator, sentences, length, on_progress=None):
+    # Tests express the target as a short/medium/long setting, like the app does.
+    words = sum(len(s.split()) for s in sentences)
+    return _hierarchical(generator, sentences, words * length_ratio(length), on_progress)
 
 
 class KeepFirstWords:

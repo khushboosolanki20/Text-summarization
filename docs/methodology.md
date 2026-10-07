@@ -349,10 +349,83 @@ which first shrinks the document extractively (§5). Nothing is silently cut.
 "the company" is); the final fusion pass partly repairs this. The `concatenated` strategy is coherent within each
 section but has no transitions between sections.
 
-## 5. Hybrid TextRank → BART *(Phase 7)*
+## 5. Hybrid TextRank → BART (`app/summarizers/hybrid.py`)
 
-## 6. Summary length control *(Phase 7/8)*
-Short / medium / long presets and how they map to sentence counts and token lengths.
+### 5.1 Motivation
+
+| | TextRank | BART |
+|---|---|---|
+| Reads | the whole document, any length | 1,024 tokens per pass |
+| Strength | finds central content reliably and quickly | fluent, compressed, rephrased output |
+| Weakness | copied sentences: choppy, redundant | long input = many slow passes, each chunk summarized without knowing what matters globally |
+
+Hybrid uses TextRank as a **content selector** and BART as a **rewriter**.
+
+### 5.2 Pipeline
+
+```
+full document ─► TextRank scores every sentence (graph centrality, §2.2)
+             ─► take sentences best-first, skipping near-duplicates (cosine > 0.8),
+                until ≈ 3 × the requested summary length            (word budget)
+                and, if the summary fits one BART pass, ≤ 900 BART tokens  (token cap)
+             ─► restore original order
+             ─► BART (one pass if it fits, otherwise hierarchical, §4)
+                with the length target computed from the ORIGINAL document
+```
+
+**Why ~3× the summary length?** BART needs more material than the final summary so it can still choose,
+merge and rephrase. With exactly the summary length it could only paraphrase TextRank's choice. The factor
+(`hybrid_expansion`) is a design choice, to be tuned on validation data in Phase 14.
+
+**Why the token cap?** If the requested summary is short enough for a single generation pass (≤ ~307 words),
+the selection is also limited to one BART window. BART then needs **no chunking at all**: one pass instead of one
+per chunk plus a fusion pass. When a sentence would overflow the cap, shorter lower-ranked sentences are still
+considered, so the window is filled as fully as possible.
+
+**Length relative to the original.** BART normally sizes its summary as a ratio of *its* input. In Hybrid that
+input is the (much shorter) selection, so `HybridSummarizer` passes an explicit target, `ratio × original words`,
+via `summarize_to_target()`. A unit test checks the summary length matches the original document, not 12 % of the
+selection.
+
+### 5.3 Behaviour by document length
+
+| Document vs summary | Behaviour |
+|---|---|
+| Short text, long setting (e.g. 150 words, 32 %) | 3 × 32 % ≈ 96 % of the text is selected: Hybrid ≈ BART. Filtering only matters when the document is much longer than the summary. |
+| Medium/long document, summary fits one pass | Selection capped to one window: **one BART pass** instead of chunking. |
+| Very long document, long summary | No token cap; BART summarizes ~3 × T words hierarchically instead of the whole document. This also allows documents above the 20,000-word abstractive limit, as long as the selection is below it. |
+
+### 5.4 Trade-offs
+
+- **Faster and more focused:** BART processes only the most central part of the document. Measured on a
+  ~2,200-word test document (`short`, CPU, laptop on battery): **BART 320 s** (6 chunks + fusion pass) vs
+  **Hybrid 107 s** (TextRank + a single BART pass), about 3× faster. Quality is compared with ROUGE in Phase 14.
+- **Error propagation:** anything TextRank considers peripheral can never reach the summary, and TextRank's biases
+  (favouring sentences that share vocabulary with many others) carry over.
+- **Coherence:** selected sentences are not contiguous, so BART may see a pronoun whose antecedent was not
+  selected.
+
+The result exposes both stages: which sentences were passed to BART (`selected_indices`), their TextRank scores,
+the input reduction (% of the document BART did not have to read), and BART's metadata.
+
+## 6. Summary length control
+
+One setting, three presets, configurable via `INTELLISUM_LENGTH_RATIOS`:
+
+| Preset | Ratio | Extractive (TF-IDF, TextRank) | Abstractive (BART) | Hybrid |
+|---|---|---|---|---|
+| short | 12 % | `k = ⌈0.12 · n⌉` sentences | target `T = 0.12 · words`, generated as 0.75–1.25 · T · 1.3 tokens | TextRank selects ≈ 3T words, BART writes T |
+| medium | 22 % | `k = ⌈0.22 · n⌉` | `T = 0.22 · words` | ″ |
+| long | 32 % | `k = ⌈0.32 · n⌉` | `T = 0.32 · words` | ″ |
+
+The ratios sit inside the ranges in the project brief (10–15 %, 20–25 %, 30–35 %). Two properties follow:
+
+- **Extractive ratios count sentences, not words**, so the achieved compression depends on which sentences are
+  chosen. The reported compression ratio is always measured on the actual output.
+- **Abstractive lengths are targets, not guarantees.** The model may stop anywhere in the token range (so it can
+  end on a sentence boundary), may end sooner, and generation is bounded by 20–400 tokens per pass. For very long
+  documents the summary is section-by-section (§4.3). The reported word counts are always measured, never
+  assumed.
 
 ## 7. Faithfulness check (experimental) *(later phase)*
 What hallucination means and why this check is only a heuristic.

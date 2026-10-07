@@ -18,7 +18,7 @@ model's context window.
 
 Length planning
 ---------------
-Let T be the requested summary length (ratio x document words).
+Let T be the requested summary length (normally ratio x document words).
 
 * If one generation pass can produce T words (T x 1.3 tokens <= 400), the
   chunk summaries together aim for about 2T words (more material than needed,
@@ -45,7 +45,6 @@ from app.config import get_settings
 from app.preprocessing.chunker import Chunk, chunk_sentences
 from app.preprocessing.cleaner import count_words
 from app.preprocessing.sentence_splitter import split_sentences
-from app.summarizers.base import SummaryLength, length_ratio
 from app.summarizers.generation import TextGenerator, generate_summary, max_single_pass_words
 
 # Called as on_progress(stage, done, total), e.g. ("level 1: summarizing chunks", 3, 12).
@@ -112,12 +111,16 @@ def summarize_chunks(
 def hierarchical_summarize(
     generator: TextGenerator,
     sentences: list[str],
-    length: SummaryLength | str,
+    target_words: float,
     on_progress: ProgressCallback | None = None,
 ) -> HierarchicalResult:
+    """
+    Summarize ``sentences`` (too long for one pass) to about ``target_words``
+    words. The target is passed in rather than derived from the input so that
+    Hybrid can aim for a length relative to the *original* document.
+    """
     settings = get_settings()
-    original_words = sum(count_words(s) for s in sentences)
-    target = original_words * length_ratio(length)  # T
+    target = target_words  # T
     fuse = target <= max_single_pass_words()
 
     chunk_limit = min(settings.chunk_max_tokens, generator.content_token_limit)
