@@ -2,8 +2,8 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 4 of 15 complete (project skeleton; document loading and preprocessing;
-> TF-IDF and TextRank extractive summarization). Sections below marked
+> **Project status:** Phase 5 of 15 complete (project skeleton; document loading and preprocessing;
+> TF-IDF and TextRank extractive summarization; BART abstractive summarization). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -107,10 +107,17 @@ Implementation: [`TextRankSummarizer`](backend/app/summarizers/textrank.py); det
 [methodology §2.2](docs/methodology.md#22-textrank-appsummarizerstextrankpy).
 
 ## 9. Abstractive summarization
-*(Phase 5)*: generates new sentences that paraphrase the source.
+Abstractive methods **write** a new summary instead of copying sentences, so they can merge facts, compress
+clauses and paraphrase. They rely on Transformer **attention**: while writing each word, the decoder looks back
+at the most relevant parts of the source. Because the text is generated, it can also contain statements the
+source doesn't support (hallucination).
 
 ## 10. BART
-*(Phase 5)*
+[`BARTSummarizer`](backend/app/summarizers/bart.py) uses `facebook/bart-large-cnn`, a ~400 M-parameter
+encoder-decoder Transformer pre-trained as a denoising autoencoder and fine-tuned on CNN/DailyMail. It runs
+**locally** (GPU if usable, otherwise CPU), is loaded **once, lazily**, and decodes with deterministic 4-beam
+search. Summary length follows the short/medium/long ratio. Input longer than BART's 1,024-token window is
+**never truncated**. See [methodology §3](docs/methodology.md#3-abstractive-summarization).
 
 ## 11. LangChain
 *(Phase 9)*: used for `Document` objects, loader interfaces and text splitting only, never as the

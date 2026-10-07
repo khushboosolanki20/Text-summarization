@@ -55,6 +55,14 @@ Install PyTorch **before** the other requirements so you get the right build.
 
 See <https://pytorch.org/get-started/locally/> for other platforms.
 
+> **GPU not used?** Check `GET /api/health`: `gpu_problem` explains why. A common cause is an NVIDIA driver too
+> old for the CUDA version PyTorch was built with (`torch.cuda.is_available()` is `True` but every operation
+> fails with *"CUDA-capable device(s) is/are busy or unavailable"*). Update the driver (version 560+ for CUDA
+> 12.6) and restart. Until then the app automatically runs BART on the CPU.
+
+The BART model (`facebook/bart-large-cnn`, ~1.6 GB) is downloaded automatically into the Hugging Face cache
+the first time an abstractive summary is requested.
+
 ### 3. Install the remaining dependencies
 
 ```bash

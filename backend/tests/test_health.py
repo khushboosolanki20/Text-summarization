@@ -12,6 +12,8 @@ def test_health_returns_ok():
     assert body["status"] == "ok"
     assert body["app"] == "IntelliSum"
     assert body["device"] in {"cpu", "cuda"}
+    assert body["abstractive_model"] == "facebook/bart-large-cnn"
+    assert isinstance(body["abstractive_model_loaded"], bool)
 
 
 def test_unknown_route_returns_404_json():

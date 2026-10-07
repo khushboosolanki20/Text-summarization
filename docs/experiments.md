@@ -25,6 +25,12 @@ measure CNN only. The evaluation subset is drawn with a fixed random seed across
 *all* splits (≈ 800 MB, plus ≈ 1.3 GB of processed cache) even though only the test split is returned. Load the
 parquet file of the needed split directly instead (`load_dataset("parquet", data_files=...)`), roughly 30 MB.
 
+**Planned: BART length strategy.** `bart-large-cnn` was fine-tuned to produce 56–142-token summaries; IntelliSum
+instead sizes summaries by the short/medium/long ratio. Phase 14 compares both on validation articles that fit
+in 1,024 tokens. A Phase 5 attempt on CPU was abandoned: the laptop was on battery and throttled
+(≈ 0.6 cores used), so 40 articles × 3 configurations did not finish in 3 hours. Run experiments on mains power,
+ideally on the GPU.
+
 **Tune on validation, report on test.** Hyper-parameters (e.g. the TextRank similarity threshold) are chosen on
 the validation split so the reported test numbers are not optimistically biased.
 

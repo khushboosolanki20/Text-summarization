@@ -51,6 +51,27 @@ class PasswordProtectedError(IntelliSumError):
     default_message = "The PDF is password-protected. Please upload an unlocked copy."
 
 
+class ContextWindowExceededError(IntelliSumError):
+    status_code = 413
+    default_message = "The text is longer than the summarization model can read in one pass."
+
+
+# --- Model errors -----------------------------------------------------------
+
+
+class ModelLoadError(IntelliSumError):
+    status_code = 503
+    default_message = (
+        "The abstractive summarization model could not be loaded. "
+        "Extractive methods (TF-IDF, TextRank) are still available."
+    )
+
+
+class InferenceError(IntelliSumError):
+    status_code = 500
+    default_message = "The summarization model failed to generate a summary. Please try again."
+
+
 class OCRRequiredError(IntelliSumError):
     status_code = 422
     default_message = (

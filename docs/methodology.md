@@ -218,9 +218,75 @@ TextRank and TF-IDF are close (both are built on the same TF-IDF vectors); both 
 inverted-pyramid reason given in §2.1. Final numbers are produced in Phase 14.
 
 ## 3. Abstractive summarization
-### 3.1 Transformers and attention *(Phase 5)*
-### 3.2 BART *(Phase 5)*
-What BART is, its denoising pre-training, and why `facebook/bart-large-cnn` suits news-style summarization.
+
+An abstractive summary is **written**, not selected: the model generates new sentences that can merge facts
+from different parts of the document, drop subordinate clauses and paraphrase. This produces fluent, compact
+summaries, but because the text is generated it can also state things the source doesn't support
+(**hallucination**, see §7).
+
+### 3.1 Transformers and attention
+
+Earlier neural summarizers (RNNs/LSTMs) read text one word at a time and squeezed everything into a fixed-size
+memory, so information from early in a long input faded. The **Transformer** (Vaswani et al., 2017) replaces
+recurrence with **attention**: every token computes a weighted combination of *all* other tokens,
+
+```
+Attention(Q, K, V) = softmax(Q·Kᵀ / √d) · V
+```
+
+where each token's *query* `Q` is compared with every token's *key* `K` and the resulting weights mix their
+*values* `V`. Several "heads" do this in parallel, each free to learn a different relation (coreference,
+subject-verb, topic). For summarization this means:
+
+- the representation of "she" in sentence 9 can draw directly on "Sara Mellado" in sentence 2;
+- when the decoder writes each summary word, **cross-attention** lets it look back at whichever source
+  positions are most relevant at that moment, which is how content is "selected" in an abstractive model.
+
+The cost of attention grows with the square of the input length, which is why models have a fixed maximum input
+(the context window, §4).
+
+### 3.2 BART (`app/summarizers/bart.py`, `app/summarizers/models.py`)
+
+**Architecture.** BART (Lewis et al., 2019) is an **encoder-decoder** Transformer: a bidirectional encoder (like
+BERT) reads the whole document, and an autoregressive decoder (like GPT) generates the summary token by token.
+`bart-large` has 12 encoder + 12 decoder layers, 16 attention heads and ~400 M parameters.
+
+**Pre-training.** BART is a *denoising autoencoder*: text is corrupted (spans replaced by a single mask, sentence
+order shuffled) and the model learns to reconstruct the original. Reconstruction requires both understanding
+the input and generating fluent text, exactly the two skills summarization needs.
+
+**Why `facebook/bart-large-cnn`.** This checkpoint is fine-tuned on ~287,000 CNN/DailyMail article-summary pairs,
+so it has learned what a news summary looks like, matches our evaluation dataset, runs locally (no API), and fits
+on a laptop GPU or CPU (1.6 GB). Its main constraint is the **1,024-token context window** (≈ 750 words).
+
+**Decoding.**
+
+| Setting | Value | Why |
+|---|---|---|
+| Beam search | 4 beams | Keep the 4 best partial summaries at each step instead of greedily taking the single most likely token |
+| Sampling | off | Same input → same summary (reproducible, testable) |
+| `no_repeat_ngram_size` | 3 | Forbid repeating any 3-word sequence (prevents loops like "the report said the report said") |
+| `length_penalty` | 2.0 | Counteracts beam search's bias toward short outputs |
+| Length | `ratio × input words × 1.3` tokens, ±25 % | 1.3 ≈ BPE tokens per English word; the range lets the model stop at a sentence boundary |
+
+If generation hits the length limit mid-sentence, the incomplete trailing fragment is removed (when at least one
+complete sentence remains).
+
+**Engineering.**
+
+- **Loaded once, lazily, thread-safe.** The first abstractive request loads the model (≈ 3 s from a warm disk
+  cache, ≈ 36 s on the very first cold read); later requests reuse the same objects. The server starts
+  instantly and the extractive methods never wait for BART. `/api/health` reports whether it is loaded.
+- **Model-agnostic.** `models.py` wraps any Hugging Face seq2seq model. T5 (`summarize:` prefix) and PEGASUS are
+  registered and loaded only if used, so adding a model is one registry entry.
+- **GPU if it actually works.** `torch.cuda.is_available()` can return `True` even when every GPU operation fails
+  (it happened on our development laptop: driver 537.70 supports CUDA 12.2, PyTorch was built for 12.6). A tiny
+  probe operation decides; otherwise the model runs on CPU with a logged warning.
+- **No silent truncation.** Input is tokenized with `truncation=False`; if it exceeds 1,024 tokens a
+  `ContextWindowExceededError` is raised. Long documents are handled by chunking (§4).
+- **Failures are reported, not crashed.** Load failures (no network, missing PyTorch, out of memory) raise
+  `ModelLoadError` ("extractive methods are still available"); GPU out-of-memory and other generation errors
+  raise `InferenceError`.
 
 ## 4. Long documents and chunking *(Phase 6)*
 Why a 1024-token context window requires hierarchical summarization.

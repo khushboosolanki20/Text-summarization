@@ -67,6 +67,23 @@ class Settings(BaseSettings):
     abstractive_model_name: str = "facebook/bart-large-cnn"
     # "auto" picks CUDA when available, otherwise CPU. Can force "cpu"/"cuda".
     device: str = "auto"
+    # Half precision halves GPU memory and speeds up inference, at a small
+    # risk of numerical differences. Ignored on CPU.
+    use_fp16: bool = False
+
+    # --- Generation (decoding) settings -------------------------------------
+    # Defaults follow the generation config facebook/bart-large-cnn was tuned
+    # with. Sampling is never used, so output is deterministic.
+    num_beams: int = 4
+    length_penalty: float = 2.0  # > 1 favours longer beams (counteracts the bias toward short outputs)
+    no_repeat_ngram_size: int = 3  # never repeat any 3-gram -> prevents "the the the" loops
+    # Summary length in tokens is derived from the input length and the
+    # short/medium/long ratio, then clamped to these bounds per generation pass.
+    min_summary_tokens: int = 20
+    max_summary_tokens: int = 400
+    # BART's byte-pair tokenizer produces ~1.3 tokens per English word; used
+    # to convert word targets into token budgets.
+    tokens_per_word: float = 1.3
 
 
 @lru_cache
