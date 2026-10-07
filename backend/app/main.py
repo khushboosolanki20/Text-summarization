@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 
 from app.api import health
 from app.config import get_settings
+from app.errors import IntelliSumError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("intellisum")
@@ -33,6 +34,11 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(IntelliSumError)
+    async def intellisum_error_handler(request: Request, exc: IntelliSumError) -> JSONResponse:
+        # Expected, user-caused errors: return the friendly message as-is.
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

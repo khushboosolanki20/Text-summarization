@@ -27,6 +27,20 @@ class Settings(BaseSettings):
     # --- Input limits ------------------------------------------------------
     max_upload_mb: float = 10.0
     max_input_chars: int = 500_000
+    # Below these thresholds a summary is meaningless, so the input is rejected.
+    min_input_words: int = 40
+    min_input_sentences: int = 3
+
+    # --- Preprocessing -----------------------------------------------------
+    spacy_model: str = "en_core_web_sm"
+    # How sentence boundaries are detected:
+    #   "parser": spaCy dependency parser (most accurate, default)
+    #   "senter": spaCy's small statistical sentence segmenter (~4x faster)
+    #   "rule":   punctuation rules only (no model download needed)
+    sentence_segmenter: str = "parser"
+    # Fragments shorter than this (headings, "Yes!", page labels) are not
+    # treated as candidate sentences for summarization.
+    min_sentence_words: int = 3
 
     # --- Abstractive model -------------------------------------------------
     abstractive_model_name: str = "facebook/bart-large-cnn"

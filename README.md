@@ -2,7 +2,8 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 1 of 15 (project structure, backend & frontend skeletons). Sections below marked
+> **Project status:** Phase 2 of 15 complete (project skeleton; document loading and preprocessing, see
+> [docs/methodology.md §1](docs/methodology.md#1-preprocessing)). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
