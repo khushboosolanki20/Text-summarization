@@ -26,6 +26,17 @@ from app.preprocessing.cleaner import count_words
 SimilarityFn = Callable[[int], np.ndarray]
 
 
+class SummaryMethod(str, Enum):
+    TFIDF = "tfidf"
+    TEXTRANK = "textrank"
+    BART = "bart"
+    HYBRID = "hybrid"
+
+    @property
+    def is_extractive(self) -> bool:
+        return self in (SummaryMethod.TFIDF, SummaryMethod.TEXTRANK)
+
+
 class SummaryLength(str, Enum):
     SHORT = "short"
     MEDIUM = "medium"

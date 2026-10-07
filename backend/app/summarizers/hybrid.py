@@ -62,6 +62,22 @@ class HybridSummarizer(BaseSummarizer):
         if self.expansion < 1:
             raise ValueError("expansion must be >= 1 (the selection must be at least as long as the summary)")
 
+    def plan(self, sentences: list[str], length: SummaryLength | str) -> tuple[float, float, int | None]:
+        """
+        (target words, selection word budget, selection token cap).
+        The target is relative to the ORIGINAL document. If the final summary
+        can be written in one pass, the selection is also capped to one BART
+        window, so BART then needs no chunking at all.
+        """
+        original_words = sum(count_words(s) for s in sentences)
+        target = original_words * length_ratio(length)
+        token_cap = (
+            min(get_settings().chunk_max_tokens, self.abstractive.model.content_token_limit)
+            if target <= max_single_pass_words()
+            else None
+        )
+        return target, self.expansion * target, token_cap
+
     def select_sentences(
         self,
         sentences: list[str],
@@ -114,25 +130,17 @@ class HybridSummarizer(BaseSummarizer):
             return SummaryResult("", self.name, 0, 0, [], [])
 
         original_words = sum(count_words(s) for s in sentences)
-        target = original_words * length_ratio(length)  # T, relative to the ORIGINAL document
-        word_budget = self.expansion * target
-        # If the final summary can be written in one pass, also make the
-        # selection fit one pass: then BART needs no chunking at all.
-        single_pass = target <= max_single_pass_words()
-        token_cap = (
-            min(get_settings().chunk_max_tokens, self.abstractive.model.content_token_limit) if single_pass else None
-        )
+        target, word_budget, token_cap = self.plan(sentences, length)
 
         # --- Stage 1: TextRank content selection ---------------------------
         if on_progress:
             on_progress("selecting key sentences (TextRank)", 0, 1)
         start = time.perf_counter()
         selected, scores, textrank_meta = self.select_sentences(sentences, word_budget, token_cap)
-        extract_seconds = round(time.perf_counter() - start, 3)
+        extract_seconds = time.perf_counter() - start
         if on_progress:
             on_progress("selecting key sentences (TextRank)", 1, 1)
         selected_sentences = [sentences[i] for i in selected]  # original document order
-        selected_words = sum(count_words(s) for s in selected_sentences)
 
         # --- Stage 2: BART rewriting ------------------------------------------
         abstract = self.abstractive.summarize_to_target(selected_sentences, target, on_progress)
@@ -148,17 +156,32 @@ class HybridSummarizer(BaseSummarizer):
             metadata={
                 "num_sentences": len(sentences),
                 "num_selected": len(selected),
-                "extractive_stage": {
-                    "method": "textrank",
-                    "selected_sentences": len(selected),
-                    "selected_words": selected_words,
-                    "word_budget": round(word_budget),
-                    "token_cap": token_cap,
-                    # How much input BART was spared, as a % of the document's words.
-                    "input_reduction": round(100 * (1 - selected_words / original_words), 2),
-                    "seconds": extract_seconds,
-                    **textrank_meta,
-                },
+                "extractive_stage": self.describe_selection(
+                    sentences, selected, word_budget, token_cap, extract_seconds, textrank_meta
+                ),
                 "abstractive_stage": abstract.metadata,
             },
         )
+
+    @staticmethod
+    def describe_selection(
+        sentences: list[str],
+        selected: list[int],
+        word_budget: float,
+        token_cap: int | None,
+        seconds: float,
+        textrank_meta: dict,
+    ) -> dict:
+        original_words = sum(count_words(s) for s in sentences) or 1
+        selected_words = sum(count_words(sentences[i]) for i in selected)
+        return {
+            "method": "textrank",
+            "selected_sentences": len(selected),
+            "selected_words": selected_words,
+            "word_budget": round(word_budget),
+            "token_cap": token_cap,
+            # How much input BART was spared, as a % of the document's words.
+            "input_reduction": round(100 * (1 - selected_words / original_words), 2),
+            "seconds": round(seconds, 3),
+            **textrank_meta,
+        }

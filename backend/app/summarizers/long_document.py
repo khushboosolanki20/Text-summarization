@@ -119,43 +119,88 @@ def hierarchical_summarize(
     words. The target is passed in rather than derived from the input so that
     Hybrid can aim for a length relative to the *original* document.
     """
-    settings = get_settings()
     target = target_words  # T
-    fuse = target <= max_single_pass_words()
-
-    chunk_limit = min(settings.chunk_max_tokens, generator.content_token_limit)
-    # Words the final pass can read: the window minus 10 % headroom.
-    final_input_words = generator.content_token_limit / settings.tokens_per_word * 0.9
-
-    def count(text: str) -> int:
-        return generator.count_tokens(text, special_tokens=False)
-
+    fuse = can_fuse(target)
     levels: list[ReductionLevel] = []
     current = sentences
-    for level in range(1, settings.max_reduction_levels + 1):
+    level = 0
+    while True:
+        level += 1
         input_words = sum(count_words(s) for s in current)
-        level_target = min(2 * target, final_input_words) if fuse else target
-        # Every round must at least halve the text, which guarantees progress.
-        level_target = min(level_target, input_words * 0.5)
-
-        chunks = chunk_sentences(current, chunk_limit, count, settings.chunk_overlap_sentences)
+        level_target = round_target(generator, target, fuse, input_words)
+        chunks = make_chunks(generator, current)
         summaries = summarize_chunks(generator, chunks, level_target, on_progress, f"level {level}: summarizing chunks")
         levels.append(ReductionLevel(level, input_words, level_target, chunks, summaries))
         combined = " ".join(summaries)
 
-        if fuse and generator.fits(combined):
-            # REDUCE: one final pass fuses the partial summaries.
-            if on_progress:
-                on_progress("final summarization pass", 0, 1)
-            summary, trimmed, _ = generate_summary(generator, combined, target)
-            if on_progress:
-                on_progress("final summarization pass", 1, 1)
+        step = next_step(generator, combined, target, fuse, level)
+        if step == "final_pass":
+            summary, trimmed = final_pass(generator, combined, target, on_progress)
             return HierarchicalResult(summary, "fused", target, levels, trimmed)
-
-        if not fuse and count_words(combined) <= target * 1.25:
+        if step == "done":
             return HierarchicalResult(combined, "concatenated", target, levels)
-
-        # Still too long: the combined summaries become the next round's input.
+        if step == "max_levels":
+            return HierarchicalResult(combined, "max_levels_reached", target, levels)
+        # "another_round": the combined summaries become the next round's input.
         current = split_sentences(combined, min_words=1)
 
-    return HierarchicalResult(" ".join(levels[-1].summaries), "max_levels_reached", target, levels)
+
+# --- The individual steps ------------------------------------------------------
+# hierarchical_summarize() above runs them in a loop; the LangGraph workflow
+# (app.graph) runs the same functions as separate graph nodes.
+
+
+def can_fuse(target_words: float) -> bool:
+    """Whether one final generation pass can write the whole target summary."""
+    return target_words <= max_single_pass_words()
+
+
+def round_target(generator: TextGenerator, target_words: float, fuse: bool, input_words: int) -> float:
+    """Total words the chunk summaries of one round should aim for."""
+    settings = get_settings()
+    if fuse:
+        # ~2T gives the final pass material to choose from, capped at what the
+        # final pass can read (the window minus 10 % headroom).
+        final_input_words = generator.content_token_limit / settings.tokens_per_word * 0.9
+        level_target = min(2 * target_words, final_input_words)
+    else:
+        level_target = target_words
+    # Every round must at least halve the text, which guarantees progress.
+    return min(level_target, input_words * 0.5)
+
+
+def make_chunks(generator: TextGenerator, sentences: list[str]) -> list[Chunk]:
+    settings = get_settings()
+    limit = min(settings.chunk_max_tokens, generator.content_token_limit)
+
+    def count(text: str) -> int:
+        return generator.count_tokens(text, special_tokens=False)
+
+    return chunk_sentences(sentences, limit, count, settings.chunk_overlap_sentences)
+
+
+def next_step(generator: TextGenerator, combined: str, target_words: float, fuse: bool, level: int) -> str:
+    """
+    Decide what follows a round:
+    "final_pass" (fuse the partial summaries), "done" (return them in order),
+    "another_round" (still too long), or "max_levels" (stop anyway).
+    """
+    if fuse and generator.fits(combined):
+        return "final_pass"
+    if not fuse and count_words(combined) <= target_words * 1.25:
+        return "done"
+    if level >= get_settings().max_reduction_levels:
+        return "max_levels"
+    return "another_round"
+
+
+def final_pass(
+    generator: TextGenerator, combined: str, target_words: float, on_progress: ProgressCallback | None = None
+) -> tuple[str, bool]:
+    """REDUCE: one generation pass fuses the partial summaries. Returns (summary, trimmed?)."""
+    if on_progress:
+        on_progress("final summarization pass", 0, 1)
+    summary, trimmed, _ = generate_summary(generator, combined, target_words)
+    if on_progress:
+        on_progress("final summarization pass", 1, 1)
+    return summary, trimmed

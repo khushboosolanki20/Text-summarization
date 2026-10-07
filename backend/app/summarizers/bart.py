@@ -53,6 +53,16 @@ from app.summarizers.models import Seq2SeqSummarizationModel, get_model
 __all__ = ["AbstractiveSummarizer", "BARTSummarizer", "tidy_generated_text", "token_budget"]
 
 
+def check_abstractive_input_size(input_words: int, method_name: str) -> None:
+    """Reject inputs that would need too many slow model passes (see Settings)."""
+    limit = get_settings().abstractive_max_input_words
+    if input_words > limit:
+        raise InputTooLargeError(
+            f"The document is too long for {method_name.upper()} ({input_words:,} words; limit {limit:,}). "
+            "Use Hybrid, which first selects the key sentences, or an extractive method."
+        )
+
+
 def token_budget(input_words: int, length: SummaryLength | str) -> tuple[int, int]:
     """(min_tokens, max_tokens) of a single-pass summary for an input of ``input_words`` words."""
     return tokens_for_words(input_words * length_ratio(length))
@@ -98,12 +108,7 @@ class AbstractiveSummarizer(BaseSummarizer):
         input_words = count_words(text)
         if not sentences:
             return SummaryResult("", self.name, 0, 0)
-        if input_words > settings.abstractive_max_input_words:
-            raise InputTooLargeError(
-                f"The document is too long for {self.name.upper()} ({input_words:,} words; limit "
-                f"{settings.abstractive_max_input_words:,}). Use Hybrid, which first selects the key sentences, "
-                "or an extractive method."
-            )
+        check_abstractive_input_size(input_words, self.name)
 
         was_loaded = self.model.is_loaded
         start = time.perf_counter()

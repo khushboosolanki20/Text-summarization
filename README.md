@@ -2,9 +2,9 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 7 of 15 complete (project skeleton; document loading and preprocessing;
+> **Project status:** Phase 8 of 15 complete (project skeleton; document loading and preprocessing;
 > TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking;
-> Hybrid TextRank → BART). Sections below marked
+> Hybrid TextRank → BART; LangGraph workflow). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -125,7 +125,13 @@ search. Summary length follows the short/medium/long ratio. Input longer than BA
 summarization algorithm.
 
 ## 12. LangGraph
-*(Phase 8)*: a typed state graph with conditional routing between short- and long-document paths.
+Every request runs through one LangGraph **state graph** ([`summarization_graph.py`](backend/app/graph/summarization_graph.py)):
+`preprocess` → route by method → (`extractive_summarize` | `select_key_sentences` → `check_length` →
+`abstractive_single_pass` or the **chunk → summarize → combine loop** → `final_summarization`) → `postprocess` →
+`evaluate`. A typed state records the sentences, selection, chunks, intermediate summaries, the path taken and
+per-node timings. LangGraph contributes explicit routing and loops; the nodes contain no algorithms, and tests
+confirm the graph gives the same results as calling the summarizers directly.
+See [architecture §4](docs/architecture.md#4-langgraph-workflow-appgraph-appcoreworkflowpy).
 
 ## 13. Hybrid summarization
 [`HybridSummarizer`](backend/app/summarizers/hybrid.py) uses **TextRank as a content selector and BART as a
