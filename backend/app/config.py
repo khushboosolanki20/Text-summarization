@@ -85,6 +85,20 @@ class Settings(BaseSettings):
     # to convert word targets into token budgets.
     tokens_per_word: float = 1.3
 
+    # --- Long documents (hierarchical summarization) ------------------------
+    # Maximum tokens of document text per chunk. Kept below BART's 1,024-token
+    # window for headroom; smaller chunks give more, shorter partial summaries.
+    chunk_max_tokens: int = 900
+    # Sentences repeated from the end of one chunk at the start of the next.
+    chunk_overlap_sentences: int = 0
+    # Maximum number of chunk -> summarize -> combine rounds before the result
+    # is returned as is.
+    max_reduction_levels: int = 3
+    # Abstractive methods run one model pass per chunk, which is slow on CPU.
+    # Longer inputs are rejected with a suggestion to use Hybrid (which first
+    # shrinks the document extractively) instead of running for many minutes.
+    abstractive_max_input_words: int = 20_000
+
 
 @lru_cache
 def get_settings() -> Settings:

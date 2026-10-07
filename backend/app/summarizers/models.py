@@ -120,9 +120,24 @@ class Seq2SeqSummarizationModel:
         config = self.model.config
         return int(getattr(config, "max_position_embeddings", None) or getattr(config, "n_positions", 512))
 
-    def count_tokens(self, text: str) -> int:
-        """Number of tokens the model would see for ``text`` (incl. special tokens)."""
-        return len(self.tokenizer(self.spec.prefix + text, add_special_tokens=True)["input_ids"])
+    def count_tokens(self, text: str, special_tokens: bool = True) -> int:
+        """
+        Number of tokens for ``text``. With ``special_tokens`` (default) this is
+        exactly what the model sees: prefix + text + begin/end markers. Without,
+        it counts the text alone, which is what the chunker needs per sentence.
+        """
+        if special_tokens:
+            text = self.spec.prefix + text
+        return len(self.tokenizer(text, add_special_tokens=special_tokens)["input_ids"])
+
+    @property
+    def content_token_limit(self) -> int:
+        """Tokens available for document text once prefix and special tokens are counted."""
+        return self.max_input_tokens - self.count_tokens("")
+
+    def fits(self, text: str) -> bool:
+        """Whether ``text`` can be summarized in a single pass (no truncation)."""
+        return self.count_tokens(text) <= self.max_input_tokens
 
     def generate(self, texts: list[str], min_tokens: int, max_tokens: int) -> list[str]:
         """

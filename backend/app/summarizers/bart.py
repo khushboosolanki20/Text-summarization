@@ -35,52 +35,27 @@ the minimum / maximum summary length, clamped to sensible bounds.
 
 Context window
 --------------
-BART reads at most 1,024 tokens (~750 words). Input that does not fit is
-never truncated: this module raises ``ContextWindowExceededError``, and long
-documents are handled by hierarchical chunking (``app.summarizers``, Phase 6).
+BART reads at most 1,024 tokens (~750 words). Input that fits is summarized
+in one pass. Longer input is **never truncated**: it goes through
+hierarchical chunked summarization (``app.summarizers.long_document``).
 """
 
-import re
 import time
 
 from app.config import get_settings
+from app.errors import InputTooLargeError
 from app.preprocessing.cleaner import count_words
 from app.summarizers.base import BaseSummarizer, SummaryLength, SummaryResult, length_ratio
+from app.summarizers.generation import generate_summary, tidy_generated_text, tokens_for_words
+from app.summarizers.long_document import ProgressCallback, hierarchical_summarize
 from app.summarizers.models import Seq2SeqSummarizationModel, get_model
 
-_SENTENCE_END = re.compile(r"[.!?][\"')\]]?$")
-_LAST_SENTENCE_END = re.compile(r"[.!?][\"')\]]?(?=\s|$)")
+__all__ = ["AbstractiveSummarizer", "BARTSummarizer", "tidy_generated_text", "token_budget"]
 
 
 def token_budget(input_words: int, length: SummaryLength | str) -> tuple[int, int]:
-    """
-    (min_tokens, max_tokens) of the summary for an input of ``input_words`` words.
-
-    The target is ``ratio x input words`` tokens-converted; the model may stop
-    anywhere between 75 % and 125 % of it, so it can end on a natural sentence
-    boundary instead of being forced to an exact length.
-    """
-    settings = get_settings()
-    target = input_words * length_ratio(length) * settings.tokens_per_word
-    max_tokens = int(min(settings.max_summary_tokens, max(settings.min_summary_tokens + 10, target * 1.25)))
-    min_tokens = int(min(max_tokens - 5, max(settings.min_summary_tokens, target * 0.75)))
-    return max(1, min_tokens), max_tokens
-
-
-def tidy_generated_text(text: str) -> tuple[str, bool]:
-    """
-    Clean decoder output. If generation hit the token limit mid-sentence,
-    drop the incomplete trailing fragment, as long as at least one complete
-    sentence remains. Returns (text, trimmed?).
-    """
-    text = re.sub(r"\s+", " ", text).strip()
-    text = re.sub(r"\s+([,.;:!?])", r"\1", text)
-    if not text or _SENTENCE_END.search(text):
-        return text, False
-    ends = list(_LAST_SENTENCE_END.finditer(text))
-    if ends:
-        return text[: ends[-1].end()].strip(), True
-    return text, False
+    """(min_tokens, max_tokens) of a single-pass summary for an input of ``input_words`` words."""
+    return tokens_for_words(input_words * length_ratio(length))
 
 
 class AbstractiveSummarizer(BaseSummarizer):
@@ -97,40 +72,72 @@ class AbstractiveSummarizer(BaseSummarizer):
             self._model = get_model(self.model_key)  # shared, loaded lazily
         return self._model
 
-    def summarize(self, sentences: list[str], length: SummaryLength | str = SummaryLength.MEDIUM) -> SummaryResult:
+    def summarize(
+        self,
+        sentences: list[str],
+        length: SummaryLength | str = SummaryLength.MEDIUM,
+        on_progress: ProgressCallback | None = None,
+    ) -> SummaryResult:
+        settings = get_settings()
         text = " ".join(sentences)
         input_words = count_words(text)
         if not sentences:
             return SummaryResult("", self.name, 0, 0)
+        if input_words > settings.abstractive_max_input_words:
+            raise InputTooLargeError(
+                f"The document is too long for {self.name.upper()} ({input_words:,} words; limit "
+                f"{settings.abstractive_max_input_words:,}). Use Hybrid, which first selects the key sentences, "
+                "or an extractive method."
+            )
 
-        min_tokens, max_tokens = token_budget(input_words, length)
         was_loaded = self.model.is_loaded
         start = time.perf_counter()
-        raw = self.model.generate([text], min_tokens, max_tokens)[0]
-        inference_seconds = round(time.perf_counter() - start, 3)
-        summary, trimmed = tidy_generated_text(raw)
+        input_tokens = self.model.count_tokens(text)  # also triggers lazy loading
+        metadata: dict = {
+            "model": self.model.spec.hf_id,
+            "device": self.model.device,
+            "input_tokens": input_tokens,
+            "max_input_tokens": self.model.max_input_tokens,
+            "num_beams": settings.num_beams,
+        }
 
-        settings = get_settings()
+        if input_tokens <= self.model.max_input_tokens:
+            # Short document: one pass over the whole text.
+            summary, trimmed, (min_tokens, max_tokens) = generate_summary(
+                self.model, text, input_words * length_ratio(length)
+            )
+            metadata.update(
+                strategy="single_pass",
+                chunks=1,
+                min_summary_tokens=min_tokens,
+                max_summary_tokens=max_tokens,
+                trimmed_incomplete_sentence=trimmed,
+            )
+        else:
+            # Long document: chunk -> summarize chunks -> combine -> final pass.
+            result = hierarchical_summarize(self.model, sentences, length, on_progress)
+            summary = result.summary
+            metadata.update(
+                strategy=result.strategy,
+                chunks=len(result.levels[0].chunks),
+                target_words=round(result.target_words),
+                reduction_levels=[level.describe() for level in result.levels],
+                intermediate_summaries=result.intermediate_summaries,
+                trimmed_incomplete_sentence=result.final_pass_trimmed,
+            )
+
+        metadata.update(
+            inference_seconds=round(time.perf_counter() - start, 3),
+            # True when this request paid the one-off model loading cost.
+            model_loaded_now=not was_loaded,
+            model_load_seconds=self.model.load_seconds,
+        )
         return SummaryResult(
             summary=summary,
             method=self.name,
             original_word_count=input_words,
             summary_word_count=count_words(summary),
-            metadata={
-                "model": self.model.spec.hf_id,
-                "device": self.model.device,
-                "input_tokens": self.model.count_tokens(text),
-                "max_input_tokens": self.model.max_input_tokens,
-                "min_summary_tokens": min_tokens,
-                "max_summary_tokens": max_tokens,
-                "num_beams": settings.num_beams,
-                "inference_seconds": inference_seconds,
-                # True when this request paid the one-off model loading cost.
-                "model_loaded_now": not was_loaded,
-                "model_load_seconds": self.model.load_seconds,
-                "trimmed_incomplete_sentence": trimmed,
-                "chunks": 1,
-            },
+            metadata=metadata,
         )
 
 

@@ -2,8 +2,9 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 5 of 15 complete (project skeleton; document loading and preprocessing;
-> TF-IDF and TextRank extractive summarization; BART abstractive summarization). Sections below marked
+> **Project status:** Phase 6 of 15 complete (project skeleton; document loading and preprocessing;
+> TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking).
+> Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -130,7 +131,14 @@ summarization algorithm.
 *(Phase 7)*: TextRank selects key sentences, then BART rewrites them abstractively.
 
 ## 14. Long-document strategy
-*(Phase 6)*: sentence-boundary-aware chunking followed by hierarchical (map → combine → reduce) summarization.
+BART reads at most 1,024 tokens (~750 words), and IntelliSum **never truncates**. Longer documents are split into
+**balanced chunks of whole sentences** (≤ 900 BART tokens each, measured with BART's own tokenizer), each chunk is
+summarized, and the partial summaries are **fused in a final pass** (or, if the requested summary is longer than
+one pass can write, returned in order as a section-by-section summary). If the combined summaries are still too
+long, the process repeats, for at most 3 rounds.
+Implementation: [`chunker.py`](backend/app/preprocessing/chunker.py),
+[`long_document.py`](backend/app/summarizers/long_document.py); details in
+[methodology §4](docs/methodology.md#4-long-documents-and-chunking).
 
 ## 15. Evaluation
 *(Phase 10)*: ROUGE-1, ROUGE-2 and ROUGE-L, computed **only** when a reference summary exists, plus word

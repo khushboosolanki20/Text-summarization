@@ -146,7 +146,35 @@ def test_long_setting_is_not_shorter_than_short(bart):
 
 
 @pytest.mark.slow
-def test_input_beyond_context_window_is_rejected_not_truncated(bart):
-    too_long = ARTICLE * 12  # ~1,800 words, well over 1,024 tokens
+def test_model_refuses_to_truncate_over_long_input(bart):
+    # The low-level generate() call must never silently cut input off.
+    too_long = " ".join(ARTICLE * 12)  # ~1,500 words, well over 1,024 tokens
     with pytest.raises(ContextWindowExceededError, match="1024"):
-        bart.summarize(too_long, "short")
+        bart.model.generate([too_long], 20, 40)
+
+
+@pytest.mark.slow
+def test_long_document_is_summarized_hierarchically(bart):
+    # ~1,500 words: does not fit in one pass, so it must be chunked.
+    long_doc = [f"{s[:-1]} in region {i}." for i in range(10) for s in ARTICLE]
+    progress = []
+    result = bart.summarize(long_doc, "short", on_progress=lambda stage, done, total: progress.append((stage, done, total)))
+    meta = result.metadata
+    assert meta["input_tokens"] > 1024
+    assert meta["strategy"] == "fused"
+    assert meta["chunks"] >= 2
+    level1 = meta["reduction_levels"][0]
+    assert all(tokens <= 900 for tokens in level1["chunk_token_counts"])
+    assert len(meta["intermediate_summaries"]) == meta["chunks"]
+    assert 10 < result.summary_word_count < result.original_word_count * 0.3
+    assert progress[-1] == ("final summarization pass", 1, 1)
+
+
+def test_very_long_input_is_rejected_with_hybrid_suggestion(monkeypatch):
+    from app.errors import InputTooLargeError
+
+    monkeypatch.setattr(get_settings(), "abstractive_max_input_words", 50)
+    model = Seq2SeqSummarizationModel(ModelSpec("unused", "./never/loaded"))
+    with pytest.raises(InputTooLargeError, match="Hybrid"):
+        BARTSummarizer(model=model).summarize(ARTICLE * 2)
+    assert not model.is_loaded

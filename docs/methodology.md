@@ -288,8 +288,66 @@ complete sentence remains).
   `ModelLoadError` ("extractive methods are still available"); GPU out-of-memory and other generation errors
   raise `InferenceError`.
 
-## 4. Long documents and chunking *(Phase 6)*
-Why a 1024-token context window requires hierarchical summarization.
+## 4. Long documents and chunking
+
+### 4.1 Why chunking is necessary
+
+Self-attention compares every token with every other token, so its cost grows with the **square** of the input
+length; models are therefore trained with a fixed maximum input. For BART it is **1,024 tokens (≈ 750 words)**.
+A 10-page report has ~5,000 words. The naive fix, letting the tokenizer truncate, silently discards everything
+after the first ~750 words. For news that might go unnoticed (key facts come first), but for a report the
+conclusions are usually at the end. IntelliSum **never truncates**: input is tokenized with `truncation=False`,
+and the low-level `generate()` refuses over-long input (a test verifies this).
+
+### 4.2 Sentence-aware, balanced chunking (`app/preprocessing/chunker.py`)
+
+1. Every sentence is measured with the **model's own tokenizer** (BART BPE), not estimated.
+2. Sentences are grouped greedily into chunks of at most **900 tokens** (configurable `chunk_max_tokens`; below
+   1,024 to leave headroom for special tokens).
+3. **Balanced sizes:** with `T` total tokens and limit `L`, `n = ⌈T/L⌉` chunks are needed, so each aims for `T/n`
+   tokens. Filling every chunk to the limit would often leave a tiny last chunk (e.g. 900 + 900 + 60), whose
+   summary is mostly noise. A remaining tiny final chunk (< 30 % of the target) is merged into its predecessor
+   when that fits.
+4. **Whole sentences only.** The one exception is a single "sentence" longer than a whole chunk (e.g. a table
+   flattened into one line), which is split at word boundaries and flagged `contains_split_sentence`.
+5. **Verification:** after grouping, the *joined* text of each chunk is re-measured (joining can change BPE
+   tokenization slightly); a chunk that is over the limit is split again.
+6. **Optional overlap** (`chunk_overlap_sentences`, default 0): each chunk starts with the previous chunk's last
+   sentence(s) to carry context across the boundary. The overlap is reserved *during* grouping. (A first version
+   added it afterwards, but greedy chunks are full by then, so the overlap silently never happened; a unit test
+   caught this.) It is off by default because repeated sentences tend to be repeated in the combined summary.
+
+### 4.3 Hierarchical (map-reduce) summarization (`app/summarizers/long_document.py`)
+
+```
+document ─► chunks ─► MAP: summarize each chunk ─► COMBINE ─► fits window? ─yes─► REDUCE: final pass ─► summary
+                                                               │no
+                                                               └─► treat combined text as a new document, repeat
+                                                                   (at most 3 rounds)
+```
+
+**Length planning.** Let `T = ratio × document words` be the requested length (§2.0).
+
+| Case | Plan | Strategy |
+|---|---|---|
+| `T` fits one generation pass (`T × 1.3 ≤ 400` tokens, i.e. `T ≤ ~307` words) | Chunk summaries together aim for **2T** words (capped so their combination fits the window), giving the final pass more material than needed so it can **choose and fuse** across sections. The final pass writes `T` words. | `fused` |
+| `T` is longer than one pass can write (e.g. 12 % of a 10,000-word report = 1,200 words) | A final pass would have to compress *below* the requested length, so chunk summaries together aim for `T` words and are returned **in document order**, i.e. a section-by-section summary. | `concatenated` |
+
+Each chunk's share of the budget is **proportional to its share of the document's words**, and every round
+must at least halve the text, which guarantees termination. After `max_reduction_levels` rounds the current
+result is returned and flagged (`max_levels_reached`).
+
+**Guarantees** (each covered by a unit test): every sentence is read exactly once in the first round (nothing
+truncated, duplicated or reordered); no chunk exceeds the limit; longer settings give longer summaries; progress
+is reported per chunk (for the UI progress bar); the loop terminates even if the model fails to compress.
+
+**Cost.** One model pass per chunk plus the final pass. On CPU that is several seconds per chunk, so abstractive
+input is capped at **20,000 words** (configurable). Longer input is rejected with a suggestion to use **Hybrid**,
+which first shrinks the document extractively (§5). Nothing is silently cut.
+
+**Limitations.** Chunks are summarized independently, so a chunk loses context from earlier sections (e.g. who
+"the company" is); the final fusion pass partly repairs this. The `concatenated` strategy is coherent within each
+section but has no transitions between sections.
 
 ## 5. Hybrid TextRank → BART *(Phase 7)*
 
