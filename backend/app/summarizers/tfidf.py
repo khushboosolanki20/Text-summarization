@@ -33,9 +33,9 @@ top-k with redundancy control -> restore original order -> summary
 """
 
 import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
 
-from app.preprocessing.tokenizer import StemDisplayMap, tokenize
+from app.preprocessing.tokenizer import StemDisplayMap
+from app.preprocessing.vectorizer import cosine_similarity_fn, make_tfidf_vectorizer
 from app.summarizers.base import ExtractiveSummarizer, SimilarityFn
 
 SCORING_STRATEGIES = ("centroid", "mean")
@@ -50,17 +50,8 @@ class TFIDFSummarizer(ExtractiveSummarizer):
         self.scoring = scoring
         self.top_keywords = top_keywords
 
-    def _vectorizer(self, norm: str | None) -> TfidfVectorizer:
-        return TfidfVectorizer(
-            tokenizer=tokenize,  # our stop-word removal + stemming
-            token_pattern=None,  # silence warning: we pass our own tokenizer
-            lowercase=False,  # tokenize() already lowercases
-            sublinear_tf=True,  # tf = 1 + log(count): a word repeated 5x is not 5x as important
-            norm=norm,
-        )
-
     def score_sentences(self, sentences: list[str]) -> tuple[list[float], SimilarityFn | None, dict]:
-        vectorizer = self._vectorizer(norm="l2")
+        vectorizer = make_tfidf_vectorizer(norm="l2")
         try:
             # matrix: (n_sentences x n_terms), sparse, rows L2-normalised
             matrix = vectorizer.fit_transform(sentences)
@@ -78,15 +69,12 @@ class TFIDFSummarizer(ExtractiveSummarizer):
             norm = np.linalg.norm(centroid)
             scores = (matrix @ centroid) / norm if norm > 0 else np.zeros(len(sentences))
         else:  # "mean"
-            raw = self._vectorizer(norm=None).fit_transform(sentences)
+            raw = make_tfidf_vectorizer(norm=None).fit_transform(sentences)
             term_counts = np.diff(raw.indptr)  # non-zero terms per row (CSR format)
             sums = np.asarray(raw.sum(axis=1)).ravel()
             scores = np.divide(sums, term_counts, out=np.zeros(len(sentences)), where=term_counts > 0)
 
-        def similarity(i: int, j: int) -> float:
-            # Rows are unit vectors, so the dot product is the cosine similarity.
-            return float(matrix[i].multiply(matrix[j]).sum())
-
+        similarity = cosine_similarity_fn(matrix)
         display = StemDisplayMap(sentences)
         top = np.argsort(-centroid)[: self.top_keywords]
         keywords = [{"term": display.display(terms[i]), "weight": round(float(centroid[i]), 4)} for i in top]

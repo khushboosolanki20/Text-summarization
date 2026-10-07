@@ -21,6 +21,13 @@ the rest from the Daily Mail, and the two sources behave very differently (Lead-
 200 articles versus 39.6 on items 3000–3199 in a Phase 3 check). Taking "the first N rows" would therefore
 measure CNN only. The evaluation subset is drawn with a fixed random seed across the whole split.
 
+**Load only the needed split files.** `load_dataset("abisee/cnn_dailymail", "3.0.0", split="test")` downloads
+*all* splits (≈ 800 MB, plus ≈ 1.3 GB of processed cache) even though only the test split is returned. Load the
+parquet file of the needed split directly instead (`load_dataset("parquet", data_files=...)`), roughly 30 MB.
+
+**Tune on validation, report on test.** Hyper-parameters (e.g. the TextRank similarity threshold) are chosen on
+the validation split so the reported test numbers are not optimistically biased.
+
 ## 5. Results
 *No results yet. Results will only be reported once actually produced by `experiments/scripts`.*
 

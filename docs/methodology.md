@@ -141,8 +141,81 @@ Centroid scoring is ~9–16 ROUGE-1 points better than mean scoring, so it is th
 (the "inverted pyramid"), which a position-agnostic method like TF-IDF does not exploit. These are preliminary
 numbers used for a design decision; the full comparison is in [experiments.md](experiments.md) (Phase 14).
 
-### 2.2 TextRank *(Phase 4)*
-Similarity graph construction, PageRank, and sentence ranking.
+### 2.2 TextRank (`app/summarizers/textrank.py`)
+
+**Intuition.** PageRank ranks a web page as important if many important pages link to it. TextRank
+(Mihalcea & Tarau, 2004) applies this to sentences: a sentence is important if it is **similar to many other
+important sentences**, i.e. it states content the rest of the document keeps returning to.
+
+**1. Vector representation.** The same TF-IDF sentence vectors as §2.1 (stop words removed, Porter-stemmed,
+L2-normalised).
+
+**2. Pairwise similarity.** All cosine similarities at once with one sparse matrix product, `S = X·Xᵀ`
+(rows are unit vectors, so dot product = cosine). The diagonal is removed: a sentence cannot vote for itself.
+
+**3. Graph construction (NetworkX).** An undirected weighted graph: one node per sentence, an edge `(i, j)` with
+weight `S[i, j]` when `S[i, j] > 0.05`. On long documents each sentence keeps only its **50 strongest edges**
+(a k-nearest-neighbour graph; an edge survives if either endpoint keeps it).
+
+**4. PageRank.** `networkx.pagerank` iterates until scores change by less than 10⁻⁶:
+
+```
+PR(i) = (1 − d) / N  +  d · Σ_{j ∈ neighbours(i)}  [ w(j,i) / Σ_k w(j,k) ] · PR(j)        d = 0.85
+```
+
+Each sentence passes its score to its neighbours in proportion to how similar they are. The `(1 − d)/N` term is
+a "random jump" (with probability 0.15 the random walker restarts at a random sentence), which guarantees a
+unique solution and gives disconnected sentences a small non-zero score. The scores form a probability
+distribution (they sum to 1). `pagerank_reference()` implements the same formula from scratch as a power
+iteration, and a unit test checks it matches NetworkX.
+
+**5. Selection.** Shared with TF-IDF (§2.0).
+
+**TextRank vs TF-IDF centroid.** The centroid compares each sentence with the *average* document; TextRank uses
+the *structure* of sentence-to-sentence links, so a sentence tightly connected to a cluster of central
+sentences is promoted even if it overlaps little with the global average. Unlike the original paper, which used
+word overlap normalised by sentence length, we use TF-IDF cosine similarity, so common words contribute less.
+
+#### Design decisions (measured)
+
+**Similarity threshold.** Tuned on 300 random **validation** articles. Tuning on the test set would
+leak information into reported results.
+
+| Threshold | ROUGE-1 | Isolated sentences | Mean relative position of selected | Articles with no edges |
+|---|---|---|---|---|
+| 0.00 | 37.16 | 3.5 % | 0.33 | 0 |
+| 0.05 | 36.80 | – | – | – |
+| 0.10 | 36.92 | 10.5 % | 0.36 | 0 |
+| 0.20 | 37.32 | 43.1 % | 0.35 | 3 |
+| 0.30 | 37.86 | 68.6 % | 0.29 | 15 |
+| 0.50 | 38.01 | 86.8 % | 0.17 | 94 |
+
+ROUGE *rises* with high thresholds, but for the wrong reason: the graph falls apart (87 % of sentences
+isolated at 0.5), PageRank becomes nearly uniform, ties are broken by position, and the summary drifts toward the
+article's opening sentences. Lead-4 scores 40.9 on the same articles. A high threshold would make "TextRank"
+quietly imitate the Lead baseline. Between 0.00 and 0.20 the differences (±0.5) are within noise, so we use
+**0.05**, which removes the weakest half of the edges (pairs sharing a single minor word) and halves graph size.
+
+**k-nearest-neighbour limit.** If all sentences share vocabulary (a long single-topic report), the graph becomes
+complete: n(n−1)/2 edges, 3.1 million for 2,500 sentences, 13 s to build and rank. Limiting each sentence to
+its 50 strongest edges gives identical ROUGE on validation (36.80 / 16.11 / 24.32 with and without, including the
+43 articles longer than 51 sentences) and bounds the cost:
+
+| Document | Without limit | With limit (50) |
+|---|---|---|
+| 4,102 real sentences (~80k words) | 2.0 s, 203 MB, 310k edges | 1.0 s, 85 MB, 126k edges |
+| 2,500 fully connected sentences | ≈ 13 s, 3.1 M edges | 0.9 s, 74k edges |
+
+#### Preliminary comparison (300 random test articles, seed 42, `short` length)
+
+| Method | ROUGE-1 | ROUGE-2 | ROUGE-L |
+|---|---|---|---|
+| Lead-3 | 40.66 | 17.61 | 25.10 |
+| TF-IDF centroid | 34.35 | 14.30 | 22.68 |
+| TextRank (threshold 0.05) | 34.88 | 14.44 | 22.80 |
+
+TextRank and TF-IDF are close (both are built on the same TF-IDF vectors); both trail Lead-3 for the
+inverted-pyramid reason given in §2.1. Final numbers are produced in Phase 14.
 
 ## 3. Abstractive summarization
 ### 3.1 Transformers and attention *(Phase 5)*

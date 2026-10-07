@@ -18,6 +18,7 @@ Turning a sentence into "terms" involves three steps:
 
 import re
 from collections import Counter, defaultdict
+from functools import lru_cache
 
 from nltk.stem import PorterStemmer
 from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
@@ -26,9 +27,16 @@ _WORD = re.compile(r"[a-z][a-z'-]*[a-z]|[a-z]")
 _stemmer = PorterStemmer()
 
 
+@lru_cache(maxsize=100_000)
+def stem(word: str) -> str:
+    # Porter stemming is relatively slow and the same words recur constantly,
+    # so results are memoised.
+    return _stemmer.stem(word)
+
+
 def tokenize(text: str) -> list[str]:
     """Sentence -> list of stemmed content-word terms."""
-    return [_stemmer.stem(w) for w in _WORD.findall(text.lower()) if w not in ENGLISH_STOP_WORDS]
+    return [stem(w) for w in _WORD.findall(text.lower()) if w not in ENGLISH_STOP_WORDS]
 
 
 class StemDisplayMap:
@@ -42,7 +50,7 @@ class StemDisplayMap:
         for sentence in sentences:
             for word in _WORD.findall(sentence.lower()):
                 if word not in ENGLISH_STOP_WORDS:
-                    self._words[_stemmer.stem(word)][word] += 1
+                    self._words[stem(word)][word] += 1
 
     def display(self, stem: str) -> str:
         """The most frequent original word for this stem."""

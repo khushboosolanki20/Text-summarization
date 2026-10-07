@@ -2,8 +2,8 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 3 of 15 complete (project skeleton; document loading and preprocessing;
-> TF-IDF extractive summarization). Sections below marked
+> **Project status:** Phase 4 of 15 complete (project skeleton; document loading and preprocessing;
+> TF-IDF and TextRank extractive summarization). Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -98,7 +98,13 @@ are ranked by **cosine similarity to the centroid**. This beat the textbook "ave
 Implementation: [`TFIDFSummarizer`](backend/app/summarizers/tfidf.py).
 
 ## 8. TextRank
-*(Phase 4)*
+TextRank treats the document as a **graph**: every sentence is a node, and two sentences are linked by an edge
+weighted by their TF-IDF cosine similarity. **PageRank** (NetworkX) then ranks the sentences. A sentence scores
+highly when it is similar to many other high-scoring sentences, i.e. it expresses what the document keeps coming
+back to. The weakest links (similarity ≤ 0.05) are pruned, and on long documents each sentence keeps only its 50
+strongest links, which bounds cost without changing results.
+Implementation: [`TextRankSummarizer`](backend/app/summarizers/textrank.py); details and measurements in
+[methodology §2.2](docs/methodology.md#22-textrank-appsummarizerstextrankpy).
 
 ## 9. Abstractive summarization
 *(Phase 5)*: generates new sentences that paraphrase the source.

@@ -13,14 +13,17 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
+import numpy as np
+
 from app.config import get_settings
 from app.preprocessing.cleaner import count_words
 
 
-# similarity(i, j) -> cosine similarity between sentences i and j. A function
-# rather than an n x n matrix: selection only compares a few sentences, and a
-# full matrix for a ~5,000-sentence document would need ~200 MB.
-SimilarityFn = Callable[[int, int], float]
+# similarity(i) -> array of cosine similarities between sentence i and every
+# sentence. Computed on demand (one sparse matrix-vector product) rather than
+# as a full n x n matrix: selection only needs rows for the few candidates it
+# examines, and a full matrix for a ~5,000-sentence document needs ~200 MB.
+SimilarityFn = Callable[[int], np.ndarray]
 
 
 class SummaryLength(str, Enum):
@@ -146,7 +149,7 @@ def select_top_sentences(
     for i in ranking:
         if len(selected) == k:
             break
-        if similarity is not None and any(similarity(i, j) > redundancy_threshold for j in selected):
+        if similarity is not None and selected and similarity(i)[selected].max() > redundancy_threshold:
             skipped.append(i)
         else:
             selected.append(i)

@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 from app.preprocessing.tokenizer import StemDisplayMap, tokenize
@@ -83,13 +84,13 @@ def test_selection_ties_prefer_earlier_sentences():
 
 def test_selection_skips_redundant_sentences():
     # 0 and 1 are near-duplicates; 2 is different.
-    sim = {(0, 1): 0.95, (1, 0): 0.95}
-    selected = select_top_sentences([0.9, 0.85, 0.5], k=2, similarity=lambda i, j: sim.get((i, j), 0.1), redundancy_threshold=0.8)
+    sim = np.array([[1.0, 0.95, 0.1], [0.95, 1.0, 0.1], [0.1, 0.1, 1.0]])
+    selected = select_top_sentences([0.9, 0.85, 0.5], k=2, similarity=lambda i: sim[i], redundancy_threshold=0.8)
     assert selected == [0, 2]
 
 
 def test_selection_backfills_when_everything_is_redundant():
-    selected = select_top_sentences([0.9, 0.8, 0.7], k=2, similarity=lambda i, j: 0.99, redundancy_threshold=0.8)
+    selected = select_top_sentences([0.9, 0.8, 0.7], k=2, similarity=lambda i: np.full(3, 0.99), redundancy_threshold=0.8)
     assert selected == [0, 1]
 
 

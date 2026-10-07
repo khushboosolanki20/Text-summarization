@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     # A candidate sentence is skipped if its cosine similarity to an already
     # selected sentence exceeds this value (avoids near-duplicate sentences).
     redundancy_threshold: float = 0.8
+    # TextRank: probability of following an edge (vs. jumping to a random
+    # sentence) in PageRank, and the minimum cosine similarity for two
+    # sentences to be connected in the graph.
+    textrank_damping: float = 0.85
+    textrank_similarity_threshold: float = 0.05
+    # Each sentence keeps edges only to its N most similar sentences (a
+    # k-nearest-neighbour graph). Bounds graph size on long documents whose
+    # sentences all share vocabulary; documents with <= N+1 sentences are
+    # unaffected. 0 disables the limit.
+    textrank_max_neighbors: int = 50
 
     # --- Abstractive model -------------------------------------------------
     abstractive_model_name: str = "facebook/bart-large-cnn"
