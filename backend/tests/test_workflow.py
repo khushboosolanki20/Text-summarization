@@ -137,8 +137,14 @@ def test_document_warnings_are_carried_through(graph):
 def test_progress_callback(graph):
     events = []
     run_summarization(" ".join(variants(10)), "bart", "short", graph=graph, on_progress=lambda *e: events.append(e))
-    assert any(stage.startswith("level 1") for stage, _, _ in events)
-    assert events[-1] == ("final summarization pass", 1, 1)
+    stages = [stage for stage, _, _ in events]
+    # Every node announces itself, in workflow order...
+    assert stages[0] == "Cleaning text and splitting sentences"
+    assert stages[-1] == "Evaluating"
+    # ...with per-chunk progress inside the loop.
+    chunk_events = [e for e in events if e[0].startswith("level 1")]
+    assert [done for _, done, _ in chunk_events] == list(range(1, len(chunk_events) + 1))
+    assert ("final summarization pass", 1, 1) in events
 
 
 # ---------------------------------------------------------------- errors

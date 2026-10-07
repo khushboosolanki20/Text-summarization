@@ -26,6 +26,9 @@ class Settings(BaseSettings):
 
     # --- Input limits ------------------------------------------------------
     max_upload_mb: float = 10.0
+    # Background summarization jobs that may run at the same time (the rest
+    # queue). 1 suits CPU inference; a GPU server could use 2-4.
+    max_concurrent_jobs: int = 1
     max_input_chars: int = 500_000
     # Below these thresholds a summary is meaningless, so the input is rejected.
     min_input_words: int = 40

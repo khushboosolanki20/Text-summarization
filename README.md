@@ -2,10 +2,10 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 10 of 15 complete (project skeleton; document loading and preprocessing;
-> TF-IDF and TextRank extractive summarization; BART abstractive summarization; long-document chunking;
-> Hybrid TextRank → BART; LangGraph workflow; LangChain document processing; ROUGE evaluation and
-> experimental faithfulness check). Sections below marked
+> **Project status:** Phase 11 of 15 complete. The backend is feature-complete: document loading and
+> preprocessing; TF-IDF, TextRank, BART and Hybrid summarization; long-document chunking; LangGraph workflow;
+> LangChain document processing; ROUGE evaluation and an experimental faithfulness check; REST API.
+> Next: React UI, experiments and final documentation. Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -221,14 +221,19 @@ npm run dev
 Open <http://localhost:5173>.
 
 ## 19. API endpoints
-| Method | Path | Status |
+| Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | Implemented |
-| POST | `/api/summarize/text` | Phase 11 |
-| POST | `/api/summarize/file` | Phase 11 |
-| POST | `/api/evaluate` | Phase 11 |
+| POST | `/api/summarize/text` | Summarize pasted text: `{"text", "method", "length", "reference_summary"?}` |
+| POST | `/api/summarize/file` | Summarize an uploaded TXT / PDF / DOCX (multipart) |
+| POST | `/api/summarize/text/async`, `/api/summarize/file/async` | The same, as a background job |
+| GET | `/api/jobs/{job_id}` | Job status and live progress ("summarizing chunks 3/7"), then the result |
+| POST | `/api/evaluate` | ROUGE of any summary against a reference |
+| GET | `/api/health` · `/api/config` | Status (device, model loaded) · methods, ratios and limits |
+| POST | `/api/warmup` | Load BART in the background before the first abstractive request |
 
-See [docs/api.md](docs/api.md).
+Every error is `{"detail": "<one readable sentence>"}` with an appropriate status code; stack traces are never
+returned. ROUGE fields are `null` unless a reference summary is supplied. Full reference with examples:
+[docs/api.md](docs/api.md); interactive docs at `http://127.0.0.1:8000/docs`.
 
 ## 20. Experiments
 *(Phase 14)*: see [experiments/README.md](experiments/README.md) and [docs/experiments.md](docs/experiments.md).

@@ -85,18 +85,37 @@ def _progress(config: RunnableConfig):
     return (config or {}).get("configurable", {}).get("on_progress")
 
 
+# Human-readable stage names reported to the progress callback as each node starts.
+STAGE_LABELS = {
+    "preprocess": "Cleaning text and splitting sentences",
+    "extractive_summarize": "Scoring and selecting sentences",
+    "select_key_sentences": "Selecting key sentences (TextRank)",
+    "check_length": "Loading model and measuring input",
+    "abstractive_single_pass": "Generating summary",
+    "chunk_document": "Splitting long document into chunks",
+    "summarize_chunks": "Summarizing chunks",
+    "combine_summaries": "Combining chunk summaries",
+    "final_summarization": "Final summarization pass",
+    "postprocess": "Post-processing",
+    "evaluate": "Evaluating",
+}
+
+
 def node(name: str):
     """
-    Wrap a node function to (1) record the path taken and the time spent,
-    and (2) turn a user-facing ``IntelliSumError`` into an ``error`` entry
-    in the state, after which every router sends the run to END.
-    Unexpected exceptions (bugs) are not caught: they propagate to the API's
-    generic error handler.
+    Wrap a node function to (1) report its start to the progress callback,
+    (2) record the path taken and the time spent, and (3) turn a user-facing
+    ``IntelliSumError`` into an ``error`` entry in the state, after which every
+    router sends the run to END. Unexpected exceptions (bugs) are not caught:
+    they propagate to the API's generic error handler.
     """
 
     def decorator(fn: Node) -> Node:
         @wraps(fn)
         def wrapped(state: SummarizationState, config: RunnableConfig) -> dict:
+            progress = _progress(config)
+            if progress:
+                progress(STAGE_LABELS.get(name, name), 0, 1)
             start = time.perf_counter()
             try:
                 update = fn(state, config) or {}

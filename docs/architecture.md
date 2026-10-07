@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: sections 1–7 reflect the implementation as of Phase 9; API details are completed in Phase 11.
+> Status: reflects the implementation as of Phase 11.
 
 ## 1. High-level overview
 
@@ -124,7 +124,25 @@ hierarchical map-reduce summarization, implemented as reusable steps that the gr
 - Inside the graph, the `node` wrapper catches an `IntelliSumError`, records `{node, type, message}` in
   `errors`, and every router then sends the run to END; `run_summarization` re-raises it. Unexpected exceptions
   (bugs) are not caught there and reach the API's generic handler, which logs the traceback and returns a generic
-  message, so stack traces are never exposed. *(API mapping: Phase 11.)*
+  message, so stack traces are never exposed.
+- The API (`app/main.py`) maps `IntelliSumError` to `{"detail": message}` with its status code, rewrites
+  FastAPI's request-validation errors into one readable sentence, and answers anything unexpected with a generic
+  500. Background jobs catch the same errors and store the friendly message as the job's `error`. The status
+  codes are listed in [api.md](api.md#errors).
+
+## 8. REST API and background jobs
+
+- Endpoints are thin: they validate input with Pydantic models (`app/api/schemas.py`), call
+  `run_summarization()` and convert the result to `SummaryResponse`. The compiled graph is a FastAPI dependency,
+  so tests can inject a fast stand-in model.
+- Endpoint functions are synchronous `def`s, which FastAPI runs in a thread pool, so CPU-heavy summarization never
+  blocks the event loop (health checks stay responsive).
+- **Jobs** (`app/core/jobs.py`) wrap the same call for long documents: an in-memory registry and a thread pool
+  (1 worker by default, because parallel BART runs on a CPU are each slower), progress reported through the
+  workflow's `on_progress` callback (each node announces its stage; chunk loops report `done/total`), results
+  kept for one hour.
+- Uploads are read with a size cap (at most limit + 1 bytes), so an oversized file is rejected without being
+  fully loaded into memory.
 - Model failures are isolated: if BART cannot load, TF-IDF and TextRank still work (tested).
 
 ## 7. LangChain document processing

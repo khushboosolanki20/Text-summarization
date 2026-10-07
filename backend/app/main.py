@@ -9,10 +9,11 @@ Run from the ``backend/`` directory with::
 import logging
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api import health
+from app.api import evaluate, health, summarize
 from app.config import get_settings
 from app.errors import IntelliSumError
 
@@ -40,6 +41,12 @@ def create_app() -> FastAPI:
         # Expected, user-caused errors: return the friendly message as-is.
         return JSONResponse(status_code=exc.status_code, content={"detail": exc.message})
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # FastAPI's default is a list of JSON objects; the UI expects one
+        # readable sentence, e.g. "method: Input should be 'tfidf', 'textrank', ...".
+        return JSONResponse(status_code=422, content={"detail": describe_validation_error(exc)})
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         # Log the full traceback server-side, but never leak it to the client.
@@ -47,7 +54,24 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "An internal error occurred. Please try again."})
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(summarize.router, prefix="/api")
+    app.include_router(evaluate.router, prefix="/api")
     return app
+
+
+def describe_validation_error(exc: RequestValidationError) -> str:
+    """Turn Pydantic's error list into a short human-readable message."""
+    messages = []
+    for error in exc.errors()[:3]:
+        location = [str(part) for part in error.get("loc", ()) if part not in ("body", "query", "path", "form")]
+        field = ".".join(location)
+        if error.get("type") == "missing":
+            messages.append(f"'{field}' is required." if field else "A required value is missing.")
+        elif error.get("type") == "json_invalid":
+            messages.append("The request body is not valid JSON.")
+        else:
+            messages.append(f"{field}: {error.get('msg')}" if field else str(error.get("msg")))
+    return " ".join(messages) or "The request is invalid."
 
 
 app = create_app()
