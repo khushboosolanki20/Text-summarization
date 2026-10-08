@@ -1,0 +1,2 @@
+a,b,articles,rouge1_f_diff,rouge1_f_ci_low,rouge1_f_ci_high,rouge1_f_significant,rouge2_f_diff,rouge2_f_ci_low,rouge2_f_ci_high,rouge2_f_significant
+chunk_recursive,chunk_sentence,6,-2.44,-6.5,0.9,False,-0.92,-2.0,0.07,False

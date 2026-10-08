@@ -162,3 +162,16 @@ class AbstractiveSummarizer(BaseSummarizer):
 class BARTSummarizer(AbstractiveSummarizer):
     name = "bart"
     model_key = "bart"
+
+
+# Further seq2seq models, available for experiments (see experiments/). They
+# reuse everything above (length control, chunking, no truncation); only the
+# registry entry in models.py differs.
+class T5Summarizer(AbstractiveSummarizer):
+    name = "t5"
+    model_key = "t5"
+
+
+class PegasusSummarizer(AbstractiveSummarizer):
+    name = "pegasus"
+    model_key = "pegasus"

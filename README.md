@@ -2,11 +2,11 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 13 of 15 complete. The application is feature-complete and tested (339 tests,
-> 99 % backend line coverage, CI on every push): document loading and preprocessing; TF-IDF, TextRank, BART and
-> Hybrid summarization; long-document chunking; LangGraph workflow; LangChain document processing; ROUGE evaluation
-> and an experimental faithfulness check; REST API; React dashboard. Next: experiments and final documentation.
-> Sections below marked
+> **Project status:** Phase 14 of 15 complete. The application is feature-complete, tested (339 tests,
+> 99 % backend line coverage, CI on every push) and evaluated on CNN/DailyMail (§20): document loading and
+> preprocessing; TF-IDF, TextRank, BART and Hybrid summarization; long-document chunking; LangGraph workflow;
+> LangChain document processing; ROUGE evaluation and an experimental faithfulness check; REST API; React dashboard.
+> Next: final documentation. Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -258,7 +258,22 @@ returned. ROUGE fields are `null` unless a reference summary is supplied. Full r
 [docs/api.md](docs/api.md); interactive docs at `http://127.0.0.1:8000/docs`.
 
 ## 20. Experiments
-*(Phase 14)*: see [experiments/README.md](experiments/README.md) and [docs/experiments.md](docs/experiments.md).
+All methods were evaluated on random CNN/DailyMail **test** articles (500 for the extractive methods, the same first
+100 for BART and Hybrid), with 95 % bootstrap confidence intervals and paired comparisons. Design choices were tuned
+on the **validation** split.
+
+| Method (same 100 articles) | ROUGE-1 | ROUGE-2 | ROUGE-L | Time / article (CPU) |
+|---|---|---|---|---|
+| Lead-3 baseline | 39.84 | 17.49 | 24.82 | 0.14 s |
+| TF-IDF | 34.84 | 14.54 | 22.82 | 0.20 s |
+| TextRank | 35.36 | 14.93 | 23.05 | 0.19 s |
+| **BART** | **42.28** | **20.88** | **30.23** | 56.6 s |
+| Hybrid | 40.03 | 17.89 | 28.09 | 25.7 s |
+
+BART is best on every metric and the only method that significantly beats Lead-3. Hybrid ties Lead-3, beats both
+extractive methods by about 5 ROUGE-1, and is 2.2× faster than BART. TF-IDF and TextRank are statistically
+indistinguishable. Full results, charts, design experiments and discussion:
+[docs/experiments.md](docs/experiments.md). Reproduce them with [experiments/README.md](experiments/README.md).
 
 ## 21. Limitations
 *(Phase 15)*

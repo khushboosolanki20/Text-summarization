@@ -1,0 +1,7 @@
+a,b,articles,rouge1_f_diff,rouge1_f_ci_low,rouge1_f_ci_high,rouge1_f_significant,rouge2_f_diff,rouge2_f_ci_low,rouge2_f_ci_high,rouge2_f_significant
+hybrid_x1.5,hybrid_x2,30,-1.47,-3.63,0.59,False,-1.6,-4.03,0.34,False
+hybrid_x1.5,hybrid_x3,30,-3.68,-7.79,0.44,False,-4.07,-9.35,0.59,False
+hybrid_x1.5,hybrid_x4,30,-6.01,-9.27,-2.41,True,-7.18,-11.0,-3.41,True
+hybrid_x2,hybrid_x3,30,-2.21,-6.3,1.54,False,-2.47,-7.34,1.67,False
+hybrid_x2,hybrid_x4,30,-4.54,-7.91,-1.35,True,-5.58,-9.09,-2.29,True
+hybrid_x3,hybrid_x4,30,-2.33,-5.17,0.35,False,-3.11,-6.19,-0.34,True

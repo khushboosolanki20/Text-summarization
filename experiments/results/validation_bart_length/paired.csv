@@ -1,0 +1,2 @@
+a,b,articles,rouge1_f_diff,rouge1_f_ci_low,rouge1_f_ci_high,rouge1_f_significant,rouge2_f_diff,rouge2_f_ci_low,rouge2_f_ci_high,rouge2_f_significant
+bart_default_56_142,bart_ratio,30,2.72,0.1,5.68,True,0.73,-1.57,3.14,False

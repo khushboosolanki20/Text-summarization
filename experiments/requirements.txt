@@ -1,6 +1,7 @@
 # Extra dependencies needed only for offline experiments (not by the API server).
-# Install into the backend virtual environment:
+# Install into the backend virtual environment (from the repository root):
 #   pip install -r experiments/requirements.txt
 -r ../backend/requirements.txt
-datasets>=2.20               # CNN/DailyMail evaluation subset via Hugging Face Datasets
+datasets>=2.20               # Hugging Face Hub access (CNN/DailyMail parquet files)
 pandas>=2.2                  # tabulating results to CSV
+matplotlib>=3.8              # result charts

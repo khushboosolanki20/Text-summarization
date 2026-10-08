@@ -1,0 +1,3 @@
+method,articles,errors,rouge1_f,rouge1_f_ci_low,rouge1_f_ci_high,rouge2_f,rouge2_f_ci_low,rouge2_f_ci_high,rougeL_f,rougeL_f_ci_low,rougeL_f_ci_high,rougeLsum_f,rougeLsum_f_ci_low,rougeLsum_f_ci_high,summary_words,compression_ratio,seconds_mean,seconds_median,articles_with_flags
+chunk_recursive,6,0,43.65,36.28,51.28,19.41,11.43,29.26,27.2,21.99,32.61,41.78,34.22,49.57,110.7,90.4,189.211,175.212,
+chunk_sentence,6,0,46.09,40.21,51.33,20.32,12.2,30.4,27.86,22.76,32.45,43.83,37.7,49.56,110.2,90.3,182.28,173.573,

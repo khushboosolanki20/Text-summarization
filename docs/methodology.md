@@ -146,7 +146,7 @@ rejected by `centroid`.
 Centroid scoring is ~9–16 ROUGE-1 points better than mean scoring, so it is the default. Both trail
 **Lead-3** (the first three sentences), a known property of news: journalists put the key facts first
 (the "inverted pyramid"), which a position-agnostic method like TF-IDF does not exploit. These are preliminary
-numbers used for a design decision; the full comparison is in [experiments.md](experiments.md) (Phase 14).
+numbers used for a design decision; the full comparison is in [experiments.md](experiments.md).
 
 ### 2.2 TextRank (`app/summarizers/textrank.py`)
 
@@ -222,7 +222,8 @@ its 50 strongest edges gives identical ROUGE on validation (36.80 / 16.11 / 24.3
 | TextRank (threshold 0.05) | 34.88 | 14.44 | 22.80 |
 
 TextRank and TF-IDF are close (both are built on the same TF-IDF vectors); both trail Lead-3 for the
-inverted-pyramid reason given in §2.1. Final numbers are produced in Phase 14.
+inverted-pyramid reason given in §2.1. Final numbers, on 500 articles with confidence intervals, are in
+[experiments.md §3](experiments.md#3-main-results-test-split): TextRank and TF-IDF do not differ significantly.
 
 ## 3. Abstractive summarization
 
@@ -382,7 +383,9 @@ full document ─► TextRank scores every sentence (graph centrality, §2.2)
 
 **Why ~3× the summary length?** BART needs more material than the final summary so it can still choose,
 merge and rephrase. With exactly the summary length it could only paraphrase TextRank's choice. The factor
-(`hybrid_expansion`) is a design choice, to be tuned on validation data in Phase 14.
+(`hybrid_expansion`) was tested on validation data (1.5×–4×): quality rises with more context and 3× is the
+balanced point, while 4× gains about 2 ROUGE-1 for 40 % more time
+([experiments.md §4.1](experiments.md#41-hybrid-how-much-should-textrank-select-30-articles)).
 
 **Why the token cap?** If the requested summary is short enough for a single generation pass (≤ ~307 words),
 the selection is also limited to one BART window. BART then needs **no chunking at all**: one pass instead of one
@@ -406,7 +409,9 @@ selection.
 
 - **Faster and more focused:** BART processes only the most central part of the document. Measured on a
   ~2,200-word test document (`short`, CPU, laptop on battery): **BART 320 s** (6 chunks + fusion pass) vs
-  **Hybrid 107 s** (TextRank + a single BART pass), about 3× faster. Quality is compared with ROUGE in Phase 14.
+  **Hybrid 107 s** (TextRank + a single BART pass), about 3× faster. On 100 CNN/DailyMail test articles Hybrid was
+  2.2× faster than BART at 2.3 ROUGE-1 lower, and about 5 points better than TF-IDF/TextRank
+  ([experiments.md §3](experiments.md#3-main-results-test-split)).
 - **Error propagation:** anything TextRank considers peripheral can never reach the summary, and TextRank's biases
   (favouring sentences that share vocabulary with many others) carry over.
 - **Coherence:** selected sentences are not contiguous, so BART may see a pronoun whose antecedent was not
