@@ -1,7 +1,5 @@
 # Methodology
 
-> Status: skeleton (Phase 1). Sections are written alongside the implementation of each method.
-
 ## 1. Preprocessing
 
 Every method works on **sentences**, so the quality of cleaning and segmentation directly affects every summary.
@@ -69,7 +67,7 @@ Input is rejected with a human-readable message if it is empty, longer than 500,
   article this produced a near-copy of the lead sentence that the redundancy filter (cosine > 0.8) did not catch,
   so the TextRank summary repeated a claim. BART/Hybrid fused it away.
 - **Opening quotes** that spaCy attaches to the end of the previous sentence (`…Donoghue. '` + `Garry, if…`) are
-  moved back to the sentence they open (fixed in Phase 12 after it was spotted in the UI; unit-tested).
+  moved back to the sentence they open (fixed after it was spotted while testing the UI; unit-tested).
 
 - No OCR: scanned pages are detected and reported, not read.
 - Multi-column PDFs and tables in PDFs may still be extracted in an imperfect reading order.

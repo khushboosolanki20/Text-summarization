@@ -1,1 +1,1 @@
-"""LangGraph state definition and summarisation workflow graph (Phase 8)."""
+"""LangGraph state definition and the summarization workflow graph."""

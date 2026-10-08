@@ -1,1 +1,1 @@
-"""Application services that connect the API to the summarisation workflow (Phase 8/11)."""
+"""Application services that connect the API to the summarization workflow: run_summarization() and background jobs."""

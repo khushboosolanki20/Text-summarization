@@ -1,1 +1,1 @@
-"""ROUGE scoring and summary statistics (Phase 10)."""
+"""ROUGE scoring, summary statistics and the experimental faithfulness check."""

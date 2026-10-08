@@ -13,7 +13,7 @@ LangChain's ``BaseLoader`` is the standard interface for turning a source
   other splitters, vector stores) without adapters.
 
 The actual extraction and validation is not re-implemented: the loaders call
-the Phase 2 modules (``app.documents.loader``), which detect scanned or
+the extraction modules (``app.documents.loader``), which detect scanned or
 corrupted files and enforce size limits.
 """
 

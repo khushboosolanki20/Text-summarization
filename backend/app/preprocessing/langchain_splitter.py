@@ -13,7 +13,7 @@ this interface makes the chunking strategy **pluggable**:
   cuts at paragraph, then line, then word boundaries. With sentences joined
   by spaces it falls back to word boundaries and may cut sentences in
   half. Selectable with ``INTELLISUM_CHUNKING_STRATEGY=recursive`` so the
-  effect of respecting sentence boundaries can be measured (Phase 14).
+  effect of respecting sentence boundaries can be measured (docs/experiments.md 4.3).
 
 Both are configured with the summarization model's own token counter, so
 "chunk size" means model tokens, not characters.

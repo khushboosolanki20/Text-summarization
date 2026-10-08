@@ -1,1 +1,1 @@
-"""Plain-text, PDF and DOCX loaders producing LangChain Document objects (Phases 2 and 9)."""
+"""Plain-text, PDF and DOCX extraction and validation, and the LangChain document loaders."""

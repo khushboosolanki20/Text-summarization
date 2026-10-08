@@ -26,7 +26,7 @@ held-out validation data.
 Two lessons from earlier phases shaped the protocol:
 
 - **Sampling must be random.** The test split is ordered: the first ~1,100 articles are CNN, the rest Daily Mail.
-  Lead-3 ROUGE-1 was 30.3 on the first 200 articles versus 39.6 on a Daily Mail slice in a Phase 3 check, so
+  Lead-3 ROUGE-1 was 30.3 on the first 200 articles versus 39.6 on a Daily Mail slice in an early check, so
   "the first N rows" would measure CNN only. Experiments shuffle the whole split with a seed and take the first N.
 - **Load only the needed split.** `load_dataset("abisee/cnn_dailymail", "3.0.0", split="test")` downloads *all*
   splits (≈ 800 MB plus ≈ 1.3 GB of cache). The scripts download only the needed parquet file (≈ 30 MB).

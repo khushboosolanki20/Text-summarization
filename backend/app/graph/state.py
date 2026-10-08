@@ -34,7 +34,7 @@ class SummarizationState(TypedDict, total=False):
     documents: list[Any]  # ... SourceDocuments, e.g. one LangChain Document per PDF page
     method: str  # "tfidf" | "textrank" | "bart" | "hybrid"
     summary_length: str  # "short" | "medium" | "long"
-    reference_summary: str | None  # enables ROUGE (Phase 10)
+    reference_summary: str | None  # enables ROUGE when provided
     started_at: float  # perf_counter() when the workflow started
 
     # --- Preprocessing ---------------------------------------------------------

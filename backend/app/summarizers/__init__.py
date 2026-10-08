@@ -1,1 +1,1 @@
-"""Summarisation algorithms: TF-IDF, TextRank, BART and Hybrid (Phases 3-7)."""
+"""Summarization algorithms: TF-IDF, TextRank, BART (plus optional T5 / PEGASUS) and Hybrid."""

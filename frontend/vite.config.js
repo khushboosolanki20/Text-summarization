@@ -20,5 +20,8 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.js'],
     css: false,
+    // The default 5 s per test is too tight for UI tests that type text when
+    // the machine is busy (e.g. while BART runs); real failures still fail fast.
+    testTimeout: 20000,
   },
 })

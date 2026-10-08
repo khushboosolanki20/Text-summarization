@@ -117,7 +117,7 @@ class Settings(BaseSettings):
     # --- Hybrid (TextRank -> BART) -------------------------------------------
     # TextRank selects about this many times the requested summary length,
     # giving BART more material than it needs so it can still choose and
-    # rephrase. (A design choice to be tuned on validation data, Phase 14.)
+    # rephrase. Chosen on validation data: see docs/experiments.md section 4.1.
     hybrid_expansion: float = 3.0
 
 

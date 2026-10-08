@@ -1,27 +1,24 @@
 # Architecture
 
-> Status: reflects the implementation as of Phase 11.
-
 ## 1. High-level overview
 
 ```mermaid
 flowchart TD
-    UI[React frontend] -->|HTTP / REST| API[FastAPI backend]
-    API --> WF[LangGraph summarization workflow]
-    WF --> DOC[Document processing<br/>loaders · cleaning · sentences · chunks]
-    WF --> SUM{Summarizer}
-    SUM --> TFIDF[TF-IDF]
-    SUM --> TR[TextRank]
-    SUM --> BART[BART]
-    TR --> HYB[Hybrid: TextRank → BART]
-    BART --> HYB
-    DOC --> SUM
-    TFIDF --> EV[Evaluation<br/>ROUGE + statistics]
-    TR --> EV
-    BART --> EV
-    HYB --> EV
-    EV --> RESP[API response]
-    RESP --> UI
+    UI["React dashboard<br/>(Vite · Tailwind · Recharts)"] -->|"REST: start job, poll progress"| API["FastAPI<br/>validation · readable errors"]
+    API --> JOBS["Background jobs<br/>progress per stage / chunk"]
+    JOBS --> WF["LangGraph workflow<br/>run_summarization()"]
+    API -->|uploads| LOAD["LangChain loaders<br/>TXT · PDF (per page) · DOCX"]
+    LOAD --> WF
+    WF --> PRE["Preprocessing<br/>clean · spaCy sentences · page provenance"]
+    PRE --> ROUTE{method}
+    ROUTE -->|tfidf / textrank| EXT["TF-IDF centroid · TextRank PageRank"]
+    ROUTE -->|hybrid| SEL["TextRank selection"] --> LEN
+    ROUTE -->|bart| LEN{"fits 1,024<br/>tokens?"}
+    LEN -->|yes| ONE["BART single pass"]
+    LEN -->|no| LOOP["chunk → summarize → combine<br/>→ final pass"]
+    EXT & ONE & LOOP --> EVAL["Evaluation<br/>statistics · ROUGE · faithfulness"]
+    EVAL --> API
+    MODEL[("bart-large-cnn<br/>loaded once, lazily<br/>GPU if usable, else CPU")] -.-> ONE & LOOP
 ```
 
 ## 2. Backend layers
@@ -29,12 +26,12 @@ flowchart TD
 | Layer | Package | Responsibility |
 |---|---|---|
 | HTTP | `app/api` | Request validation, file upload, response models |
-| Service | `app/core` | `run_summarization()`: runs the workflow, returns a plain result |
+| Service | `app/core` | `run_summarization()`: runs the workflow, returns a plain result; background jobs with progress |
 | Orchestration | `app/graph` | LangGraph state + routing |
-| Algorithms | `app/summarizers` | TF-IDF, TextRank, BART, Hybrid *(Phases 3-7)* |
-| Preprocessing | `app/preprocessing` | Cleaning, sentence splitting, chunking *(Phases 2, 6)* |
+| Algorithms | `app/summarizers` | TF-IDF, TextRank, BART, Hybrid (+ optional T5 / PEGASUS) |
+| Preprocessing | `app/preprocessing` | Cleaning, sentence splitting, tokenization, chunking, LangChain splitter |
 | Documents | `app/documents` | TXT / PDF / DOCX extraction and validation; LangChain loaders → `Document` per page |
-| Evaluation | `app/evaluation` | ROUGE + statistics *(Phase 10)* |
+| Evaluation | `app/evaluation` | ROUGE, statistics, faithfulness check |
 
 ## 3. Design principles
 
@@ -130,26 +127,11 @@ hierarchical map-reduce summarization, implemented as reusable steps that the gr
   500. Background jobs catch the same errors and store the friendly message as the job's `error`. The status
   codes are listed in [api.md](api.md#errors).
 
-## 8. REST API and background jobs
-
-- Endpoints are thin: they validate input with Pydantic models (`app/api/schemas.py`), call
-  `run_summarization()` and convert the result to `SummaryResponse`. The compiled graph is a FastAPI dependency,
-  so tests can inject a fast stand-in model.
-- Endpoint functions are synchronous `def`s, which FastAPI runs in a thread pool, so CPU-heavy summarization never
-  blocks the event loop (health checks stay responsive).
-- **Jobs** (`app/core/jobs.py`) wrap the same call for long documents: an in-memory registry and a thread pool
-  (1 worker by default, because parallel BART runs on a CPU are each slower), progress reported through the
-  workflow's `on_progress` callback (each node announces its stage; chunk loops report `done/total`), results
-  kept for one hour.
-- Uploads are read with a size cap (at most limit + 1 bytes), so an oversized file is rejected without being
-  fully loaded into memory.
-- Model failures are isolated: if BART cannot load, TF-IDF and TextRank still work (tested).
-
 ## 7. LangChain document processing
 
 ```
 upload / pasted text
-   │  UploadedFileLoader / PastedTextLoader         (LangChain BaseLoader; Phase 2 extraction + validation inside)
+   │  UploadedFileLoader / PastedTextLoader         (LangChain BaseLoader; extraction + validation inside)
    ▼
 list[Document]   one per PDF page: page_content + {source, file_type, page, total_pages, title, author}
    │  preprocess_documents()                        (clean each page → join pages → spaCy sentences)
@@ -174,7 +156,7 @@ Both splitters measure size with the **model's tokenizer**, so "900" means 900 B
 
 Each PDF page is cleaned separately and the pages are joined. If a page does not end a sentence and the next
 starts in lowercase, they are joined with a space (or, for a word hyphenated across the break, with nothing),
-so a sentence that runs over a page break is no longer cut into two fragments (a Phase 2 limitation, fixed
+so a sentence that runs over a page break is no longer cut into two fragments (an early limitation, fixed
 here). spaCy reports each sentence's character offset; a binary search over the page start offsets gives the
 page it starts on. Hybrid's selection keeps these page numbers, and every reduction round reports
 `chunk_pages`, e.g. `[[1, 2, 3], [3, 4, 5], …]`. After the first round, chunks contain summaries rather than
@@ -189,3 +171,39 @@ framework-free `TextDocument`), on `chunk_sentences()`, and on a plain `Chunker`
 import LangChain, and `BARTSummarizer` used directly still chunks with the framework-free `chunk_sentences()`. A
 unit test confirms the LangChain splitter and the core chunker produce identical chunks, and that preprocessing
 gives identical results for LangChain and framework-free documents.
+
+## 8. REST API and background jobs
+
+- Endpoints are thin: they validate input with Pydantic models (`app/api/schemas.py`), call
+  `run_summarization()` and convert the result to `SummaryResponse`. The compiled graph is a FastAPI dependency,
+  so tests can inject a fast stand-in model.
+- Endpoint functions are synchronous `def`s, which FastAPI runs in a thread pool, so CPU-heavy summarization never
+  blocks the event loop (health checks stay responsive).
+- **Jobs** (`app/core/jobs.py`) wrap the same call for long documents: an in-memory registry and a thread pool
+  (1 worker by default, because parallel BART runs on a CPU are each slower), progress reported through the
+  workflow's `on_progress` callback (each node announces its stage; chunk loops report `done/total`), results
+  kept for one hour.
+- Uploads are read with a size cap (at most limit + 1 bytes), so an oversized file is rejected without being
+  fully loaded into memory.
+- Model failures are isolated: if BART cannot load, TF-IDF and TextRank still work (tested).
+
+## 9. Frontend
+
+```
+SummarizePage ── SummarizeForm (source tabs, method cards, length, reference) ── useSummarize()
+      │                                                                            │ POST …/async, poll /api/jobs/{id}
+      ├── ProgressPanel (stage, done/total, elapsed, cancel)                        │
+      └── ResultView (lazy-loaded with Recharts)  ◄──────────────── result ────────┘
+            ComparisonPanel · SummaryCard · FaithfulnessPanel · RougePanel · ProcessPanel · SentenceInsights
+HistoryPage (localStorage) · AboutPage
+```
+
+- **State:** one hook, `useSummarize`, owns the job lifecycle (idle → running → done | error) and saves results
+  to the local history. `useConfig` loads methods, ratios and limits from `GET /api/config`, so nothing is hard-coded.
+- **Talking to the API:** `services/api.js` turns every error into one readable sentence (`toErrorMessage`) and
+  polls jobs with cancellation (`waitForJob`).
+- **Performance:** the results view and the charting library are code-split and loaded on first use (initial
+  bundle 342 KB instead of 731 KB).
+- **Accessibility:** radio groups with arrow-key navigation and accessible names, `role="alert"` errors, a
+  progressbar with values, status shown as icon + text (never colour alone), chart colours validated for
+  colour-vision deficiency with a table view for ROUGE.

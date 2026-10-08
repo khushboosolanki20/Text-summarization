@@ -1,1 +1,1 @@
-"""Text cleaning, sentence segmentation and chunking (Phases 2 and 6)."""
+"""Text cleaning, sentence segmentation, tokenization, sentence vectors and chunking."""
