@@ -84,9 +84,12 @@ uvicorn app.main:app --reload --port 8000
 ## Test
 
 ```bash
-pytest                 # all tests
-pytest -m "not slow"   # skip tests that load the BART model
+pytest -m "not slow"   # 291 fast tests (~1 min); uses a tiny test model, not the full BART
+pytest -m slow         # 9 tests with the real bart-large-cnn (~12 min on CPU)
+pytest -m "not slow" --cov=app --cov-report=term-missing   # coverage (99 %)
 ```
+
+See [docs/testing.md](../docs/testing.md) for the test strategy and inventory.
 
 ## Configuration
 

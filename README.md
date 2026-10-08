@@ -2,10 +2,11 @@
 
 *B.Tech Computer Science & Engineering · Minor Project*
 
-> **Project status:** Phase 12 of 15 complete. The application is feature-complete: document loading and
-> preprocessing; TF-IDF, TextRank, BART and Hybrid summarization; long-document chunking; LangGraph workflow;
-> LangChain document processing; ROUGE evaluation and an experimental faithfulness check; REST API; React
-> dashboard. Next: final tests, experiments and documentation. Sections below marked
+> **Project status:** Phase 13 of 15 complete. The application is feature-complete and tested (339 tests,
+> 99 % backend line coverage, CI on every push): document loading and preprocessing; TF-IDF, TextRank, BART and
+> Hybrid summarization; long-document chunking; LangGraph workflow; LangChain document processing; ROUGE evaluation
+> and an experimental faithfulness check; REST API; React dashboard. Next: experiments and final documentation.
+> Sections below marked
 > *(Phase N)* describe work that is planned but **not yet implemented**.
 
 ## Table of contents
@@ -231,6 +232,15 @@ and **short · medium · long**, and optionally add a reference summary. Long do
 - the LangGraph route with time per step.
 
 A local history keeps the last 25 summaries in the browser. See [frontend/README.md](frontend/README.md).
+
+### Running the tests
+```bash
+cd backend && pytest -m "not slow"     # 291 tests, ~1 min (99 % line coverage)
+cd backend && pytest -m slow           # 9 tests with the real BART model, ~12 min on CPU
+cd frontend && npm test                # 39 tests, ~15 s
+```
+GitHub Actions runs the fast backend suite (Python 3.11 and 3.14) and the frontend lint, tests and build on every
+push. Strategy and full inventory: [docs/testing.md](docs/testing.md).
 
 ## 19. API endpoints
 | Method | Path | Purpose |
