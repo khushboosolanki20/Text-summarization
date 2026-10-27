@@ -35,8 +35,8 @@ from app.errors import IntelliSumError
 from app.evaluation.rouge import compute_rouge
 from app.preprocessing.cleaner import count_words
 from app.preprocessing.pipeline import preprocess
-from app.summarizers.bart import PegasusSummarizer, T5Summarizer
-from app.summarizers.base import select_top_sentences
+from app.summarizers.bart import BARTSummarizer, PegasusSummarizer, T5Summarizer
+from app.summarizers.base import length_ratio, select_top_sentences
 from app.summarizers.textrank import TextRankSummarizer
 from app.summarizers.tfidf import TFIDFSummarizer
 
@@ -45,6 +45,10 @@ EXTRA_MODELS = {"t5": T5Summarizer, "pegasus": PegasusSummarizer}
 # Length-controlled variants: the method's top 3 sentences (same budget as
 # Lead-3), to separate sentence-selection quality from summary length.
 TOP3 = {"tfidf_top3": TFIDFSummarizer, "textrank_top3": TextRankSummarizer}
+PRESELECT_BART = {
+    "tfidf_bart": TFIDFSummarizer,
+    "textrank_bart": TextRankSummarizer,
+}
 ROUGE_KEYS = ("rouge1", "rouge2", "rougeL", "rougeLsum")
 
 FIELDS = (
@@ -66,6 +70,64 @@ def summarize(method: str, article: str, length: str, reference: str) -> dict:
         chosen = select_top_sentences(scores, min(3, len(scores)), similarity, get_settings().redundancy_threshold)
         summary = " ".join(pre.sentences[i] for i in chosen)
         extra = {"strategy": "extractive_top3", "original_words": pre.word_count}
+    elif method in PRESELECT_BART:
+        # Select important sentences first, then summarize them with BART.
+        pre = preprocess(article)
+        selector = PRESELECT_BART[method]()
+        scores, similarity, _ = selector.score_sentences(pre.sentences)
+
+        # Keep the final summary target based on the ORIGINAL article.
+        target_words = pre.word_count * length_ratio(length)
+
+        # Give BART more context than the intended final summary length.
+        word_budget = target_words * get_settings().hybrid_expansion
+        threshold = get_settings().redundancy_threshold
+
+        ranking = sorted(
+            range(len(pre.sentences)),
+            key=lambda i: (-scores[i], i),
+        )
+
+        selected = []
+        selected_words = 0
+
+        for idx in ranking:
+            if selected_words >= word_budget:
+                break
+
+            if (
+                similarity is not None
+                and selected
+                and similarity(idx)[selected].max() > threshold
+            ):
+                continue
+
+            sentence_words = count_words(pre.sentences[idx])
+
+            # Allow the first sentence even if it exceeds the budget.
+            if selected and selected_words + sentence_words > word_budget:
+                continue
+
+            selected.append(idx)
+            selected_words += sentence_words
+
+        if not selected and pre.sentences:
+            selected = [ranking[0]]
+
+        # Restore the original document order.
+        selected.sort()
+        selected_sentences = [pre.sentences[i] for i in selected]
+
+        bart = BARTSummarizer()
+        result = bart.summarize_to_target(selected_sentences, target_words)
+        summary = result.summary
+
+        extra = {
+            "strategy": method,
+            "original_words": pre.word_count,
+            "chunks": result.metadata.get("chunks", ""),
+            "input_tokens": result.metadata.get("input_tokens", ""),
+        }
     elif method in WORKFLOW_METHODS:
         out = run_summarization(article, method, length, reference_summary=reference)
         faith = out.faithfulness
@@ -105,7 +167,13 @@ def summarize(method: str, article: str, length: str, reference: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--methods", nargs="+", default=["lead3", "tfidf", "textrank"],
-                        choices=["lead3", *sorted(WORKFLOW_METHODS), *TOP3, *EXTRA_MODELS])
+                        choices=[
+    				"lead3",
+    				*sorted(WORKFLOW_METHODS),
+    				*TOP3,
+    				*PRESELECT_BART,
+    				*EXTRA_MODELS,
+				])
     parser.add_argument("--split", default="test", choices=["test", "validation"])
     parser.add_argument("--n", type=int, default=100, help="number of articles (random sample)")
     parser.add_argument("--seed", type=int, default=42)
